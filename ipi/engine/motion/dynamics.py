@@ -57,6 +57,7 @@ class Dynamics(Motion):
         nmts=None,
         efield=None,
         bec=None,
+        test=False,
     ):
         """Initialises a "dynamics" motion object.
 
