@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.8 virtualenv at ~/myenvs/ipi" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.8 virtualenv at ~/myenvs/ipi" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.9 virtualenv at ~/myenvs/ipi_lammps" project-jdk-type="Python SDK" />
 </project>
