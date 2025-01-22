@@ -1,5 +1,5 @@
 #ignored patterns
-
+local_examples/
 bin/i-pi-driver
 doc/manual.pdf
 doc/manual.xml
