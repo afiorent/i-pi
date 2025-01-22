@@ -1,5 +1,6 @@
 #ignored patterns
-
+local_examples/
+.idea/
 bin/i-pi-driver
 doc/manual.pdf
 doc/manual.xml
