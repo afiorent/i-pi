@@ -82,7 +82,7 @@ class Ensemble:
         bweights=None,
         hweights=None,
         time=0.0,
-        lambdakin=1,#virtually change hbar squared
+        lambdakin=1,#multiply the quantum kinetic energy
     ):
         """Initialises Ensemble.
 
