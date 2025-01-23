@@ -37,6 +37,7 @@ def simulation_xml(
     verbosity="quiet",
     safe_stride=20,
     prefix=None,
+    lambdakin=1,
 ):
     """
     A helper function to generate an XML string for an i-PI simulation input.
@@ -95,6 +96,7 @@ def simulation_xml(
     "</initialize>"
     f"<ensemble>"
     f"<temperature units='ase'> {temperature} </temperature>"
+    f"<lambdakin> {lambdakin} </lambdakin>"
     "</ensemble>"
     if temperature is not None else ""
 )}

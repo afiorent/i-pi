@@ -82,7 +82,7 @@ class Ensemble:
         bweights=None,
         hweights=None,
         time=0.0,
-        lambda_kin=1,#virtually change hbar squared
+        lambdakin=1,#virtually change hbar squared
     ):
         """Initialises Ensemble.
 
@@ -91,8 +91,8 @@ class Ensemble:
             fixcom: An optional boolean which decides whether the centre of mass
                 motion will be constrained or not. Defaults to False.
         """
-        self._lambda_kin = depend_value(name="lambda_kin")
-        self.lambda_kin=lambda_kin
+        self._lambdakin = depend_value(name="lambdakin")
+        self.lambdakin=lambdakin
         self._temp = depend_value(name="temp")
         if temp is not None:
             self.temp = temp

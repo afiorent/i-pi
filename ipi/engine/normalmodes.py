@@ -438,9 +438,9 @@ class NormalModes:
         """Returns the effective vibrational frequency for the interaction
         between replicas.
         """
-        print('!lambda kin from normal mode',self.ensemble.lambda_kin)
+        print('!lambda kin from normal mode',self.ensemble.lambdakin)
         return (
-            self.ensemble.temp * self.nbeads * units.Constants.kb / units.Constants.hbar/np.sqrt(self.ensemble.lambda_kin)
+            self.ensemble.temp * self.nbeads * units.Constants.kb / units.Constants.hbar/np.sqrt(self.ensemble.lambdakin)
         )
 
     def get_omegan2(self):
