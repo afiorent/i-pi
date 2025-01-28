@@ -1,9 +1,12 @@
 #ignored patterns
+#new patterns
 .idea/
 /tools/py/rdf*
+/tools/f90/*.so
 local_examples/
 bin/i-pi-driver
-bin/i-pi-rdf
+bin/i-pi-rdf*
+#end new patterns
 doc/manual.pdf
 doc/manual.xml
 doc/latex/input_ref_idx.tex
