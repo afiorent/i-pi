@@ -254,7 +254,7 @@ class NormalModes:
 
         # create path-frequencies related properties
         self._omegan = depend_value(
-            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp]
+            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp,self.ensemble._lambdakin] #now omegan it depends on both TemperatureRamp and LambdaRamp
         )
         self._omegan2 = depend_value(
             name="omegan2", func=self.get_omegan2, dependencies=[self._omegan]

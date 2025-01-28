@@ -74,6 +74,7 @@ objects = {
     "constraint": motion.constrained_dynamics.InputConstraint(),
     "t_ramp": motion.ramp.InputTemperatureRamp(),
     "p_ramp": motion.ramp.InputPressureRamp(),
+    "lambda_ramp": motion.ramp.InputTemperatureRamp(),
     "alchemy": motion.alchemy.InputAlchemy(),
     "planetary": motion.planetary.InputPlanetary(),
     "atomswap": motion.atomswap.InputAtomSwap(),

@@ -41,6 +41,7 @@ from ipi.engine.motion import (
     InstantonMotion,
     TemperatureRamp,
     PressureRamp,
+    LambdaRamp,
     AtomSwap,
     Planetary,
     AlKMC,
@@ -63,7 +64,7 @@ from .scphonons import InputSCPhonons
 from .alchemy import InputAlchemy
 from .atomswap import InputAtomSwap
 from .planetary import InputPlanetary
-from .ramp import InputTemperatureRamp, InputPressureRamp
+from .ramp import InputTemperatureRamp, InputPressureRamp,InputLambdaRamp
 from .al6xxx_kmc import InputAlKMC
 from .driven_dynamics import InputDrivenDynamics
 from ipi.utils.units import *
@@ -105,6 +106,7 @@ class InputMotionBase(Input):
                     "constrained_dynamics",
                     "t_ramp",
                     "p_ramp",
+                    "lambda_ramp",
                     "alchemy",
                     "atomswap",
                     "planetary",
@@ -220,6 +222,10 @@ class InputMotionBase(Input):
             InputPressureRamp,
             {"default": {}, "help": "Option for pressure ramp"},
         ),
+        "lambda_ramp": (
+            InputLambdaRamp,
+            {"default": {}, "help": "Option for lambda ramp"},
+        ),
         "instanton": (
             InputInst,
             {"default": {}, "help": "Option for Instanton optimization"},
@@ -308,6 +314,10 @@ class InputMotionBase(Input):
         elif type(sc) is PressureRamp:
             self.mode.store("p_ramp")
             self.p_ramp.store(sc)
+        elif type(sc) is LambdaRamp:
+            self.mode.store("lambda_ramp")
+            self.lambda_ramp.store(sc)
+            tsc = 1
         elif type(sc) is AlKMC:
             self.mode.store("al-kmc")
             self.al6xxx_kmc.store(sc)
@@ -452,6 +462,8 @@ class InputMotionBase(Input):
             sc = TemperatureRamp(**self.t_ramp.fetch())
         elif self.mode.fetch() == "p_ramp":
             sc = PressureRamp(**self.p_ramp.fetch())
+        elif self.mode.fetch() == "lambda_ramp":
+            sc = LambdaRamp(**self.lambda_ramp.fetch())
         elif self.mode.fetch() == "al-kmc":
             sc = AlKMC(
                 fixcom=self.fixcom.fetch(),
