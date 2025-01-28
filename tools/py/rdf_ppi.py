@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/home/fioren_a/myenvs/ipi_lammps/bin/python
 
 __author__ = "Igor Poltavsky"
 __version__ = "1.0"
@@ -36,7 +36,8 @@ from ipi.utils.io import read_file
 
 def RDF(prefix, temp, A, B, nbins, r_min, r_max, ss=0, unit="angstrom"):
     # Adding fortran functions (when exist)
-    sys.path.append(os.path.abspath(os.path.dirname(sys.argv[0]))[:-2] + "f90")
+    #sys.path.append(os.path.abspath(os.path.dirname(sys.argv[0]))[:-2] + "f90")
+    sys.path.append("/home/fioren_a/useful_repos/ipi_private/tools/" + "f90")
     try:
         import fortran
     except ImportError:

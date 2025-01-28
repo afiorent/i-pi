@@ -1,7 +1,9 @@
 #ignored patterns
 .idea/
+/tools/py/rdf*
 local_examples/
 bin/i-pi-driver
+bin/i-pi-rdf
 doc/manual.pdf
 doc/manual.xml
 doc/latex/input_ref_idx.tex
