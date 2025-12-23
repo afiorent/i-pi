@@ -24,12 +24,14 @@ class Motion:
             motion will be constrained or not.
         fixatoms_dof: A list of degrees of freedom  that should be held fixed to their
             initial positions.
+        fixbeads_dof: A list of bead degrees of freedom that should be held fixed to their
+            initial positions.
 
     Depend objects:
         none
     """
 
-    def __init__(self, fixcom=False, fixatoms_dof=None):
+    def __init__(self, fixcom=False, fixatoms_dof=None,fixbeads_dof=None):
         """Initialises Motion object.
 
         Args:
@@ -37,6 +39,8 @@ class Motion:
               motion will be constrained or not. Defaults to False.
            fixatoms_dof: A list of degrees of freedom  that should be held fixed to their
               initial positions.
+            fixbeads_dof: A list of bead degrees of freedom that should be held fixed to their
+            initial positions.
         """
 
         self._dt = depend_value(name="dt", value=0.0)
@@ -45,6 +49,13 @@ class Motion:
             self.fixatoms_dof = np.zeros(0, int)
         else:
             self.fixatoms_dof = fixatoms_dof
+
+        if fixbeads_dof is None:
+            self.fixbeads_dof = np.zeros(0, int)
+        else:
+            self.fixbeads_dof = fixbeads_dof
+            ### For debug purposes only
+            print("Fixing the following bead degrees of freedom:",fixbeads_dof)
 
         self.beads = self.cell = self.forces = self.prng = self.nm = self.enstype = None
 
