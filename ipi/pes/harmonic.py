@@ -1,4 +1,4 @@
-""" Harmonic potential """
+"""Harmonic potential"""
 
 from .dummy import Dummy_driver
 import numpy as np
@@ -33,7 +33,7 @@ class Harmonic_driver(Dummy_driver):
 
         super().__init__(*args, **kwargs)
 
-    def __call__(self, cell, pos):
+    def compute_structure(self, cell, pos):
         """Silly harmonic potential"""
         if self.type == "isotropic":
             pot = 0.5 * self.k * (pos**2).sum()

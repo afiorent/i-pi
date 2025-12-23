@@ -36,8 +36,13 @@ class Rascal_driver(Dummy_driver):
         )
         try:
             from rascal.models.genericmd import GenericMDCalculator as RascalCalc
-        except:
+        except ImportError:
             raise ImportError("Couldn't load librascal bindings")
+
+        warning(
+            "librascal driver is deprecated and will be removed in the next release."
+        )
+
         self.model = model
         self.template = template
 
@@ -51,7 +56,7 @@ class Rascal_driver(Dummy_driver):
 
         self.rascal_calc = RascalCalc(self.model, True, self.template)
 
-    def __call__(self, cell, pos):
+    def compute_structure(self, cell, pos):
         """Get energies, forces, and stresses from the librascal model"""
         pos_rascal = unit_to_user("length", "angstrom", pos)
         # librascal expects ASE-format, cell-vectors-as-rows

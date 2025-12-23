@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-""" trimsim.py
+"""trimsim.py
 
 Relies on the infrastructure of i-pi, so the ipi package should
 be installed in the Python module directory, or the i-pi
@@ -115,8 +115,13 @@ def main(inputfile, outdir="trim"):
                                     }
                                 )
                             else:
-                                filename = filename + "_" + padb + "." + o.format
-                                ofilename = ofilename + "_" + padb + "." + o.format
+                                if o.format == "ase":
+                                    filename = filename + "_" + padb + ".extxyz"
+                                    ofilename = ofilename + "_" + padb + ".extxyz"
+                                else:
+                                    filename = filename + "_" + padb + "." + o.format
+                                    ofilename = ofilename + "_" + padb + "." + o.format
+
                                 ntraj.append(
                                     {
                                         "filename": filename,
