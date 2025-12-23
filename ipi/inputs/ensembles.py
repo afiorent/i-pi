@@ -48,6 +48,15 @@ class InputEnsemble(Input):
                 "dimension": "temperature",
             },
         ),
+        "lambdakin": (
+            InputValue,
+            {
+                "dtype": float,
+                "default": 1.0,
+                "help": "Prefactor kinetic Hamiltonian",
+                "dimension": "undefined",
+            },
+        ),
         "pressure": (
             InputValue,
             {
@@ -126,6 +135,7 @@ class InputEnsemble(Input):
         self.bias_weights.store(ens.bweights)
         self.hamiltonian_weights.store(ens.hweights)
         self.time.store(ens.time)
+        self.lambdakin.store(ens.lambdakin)
 
     def fetch(self):
         """Creates an ensemble object.
@@ -146,6 +156,7 @@ class InputEnsemble(Input):
             bweights=self.bias_weights.fetch(),
             hweights=self.hamiltonian_weights.fetch(),
             time=self.time.fetch(),
+            lambdakin=self.lambdakin.fetch()
         )
 
         return ens
