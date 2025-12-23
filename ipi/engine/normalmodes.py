@@ -175,6 +175,28 @@ class NormalModes:
         self.ensemble = ensemble
         dpipe(motion._dt, self._dt)
 
+        # Generate activebeads_mask based on fixbeads_dof (same logic as in dynamics)
+        if len(motion.fixbeads_dof) > 0:
+            # Create flattened indices for all beads and atoms
+            total_dof = self.nbeads * 3 * self.natoms
+            if np.any(motion.fixbeads_dof >= total_dof):
+                raise ValueError(
+                    "Constrained bead indexes are out of bounds wrt. number of beads and atoms."
+                )
+
+            # Create mask assuming fixbeads_dof is flattened, then reshape
+            full_indices_flat = np.arange(total_dof)
+            activebeads_mask_flat = ~np.isin(full_indices_flat, motion.fixbeads_dof)
+            self.activebeads_mask = activebeads_mask_flat.reshape(self.nbeads, 3 * self.natoms)
+
+            # Debug print
+            print(f"DEBUG: Generated activebeads_mask from fixbeads_dof: {motion.fixbeads_dof}")
+            print(f"DEBUG: activebeads_mask shape: {self.activebeads_mask.shape}")
+            print(f"DEBUG: Number of active DOFs: {np.sum(self.activebeads_mask)}")
+        else:
+            self.activebeads_mask = None
+            print("DEBUG: No fixed beads constraints - activebeads_mask set to None")
+
         # sets up what's necessary to perform nm transformation.
         if self.nbeads == 1:  # classical trajectory! don't waste time doing anything!
             self.transform = nmtransform.nm_noop(nbeads=self.nbeads)
@@ -254,7 +276,7 @@ class NormalModes:
 
         # create path-frequencies related properties
         self._omegan = depend_value(
-            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp]
+            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp,self.ensemble._lambdakin] #now omegan it depends on both TemperatureRamp and LambdaRamp
         )
         self._omegan2 = depend_value(
             name="omegan2", func=self.get_omegan2, dependencies=[self._omegan]
@@ -438,9 +460,9 @@ class NormalModes:
         """Returns the effective vibrational frequency for the interaction
         between replicas.
         """
-
+        # print('!lambda kin from normal mode',self.ensemble.lambdakin)
         return (
-            self.ensemble.temp * self.nbeads * units.Constants.kb / units.Constants.hbar
+            self.ensemble.temp * self.nbeads * units.Constants.kb / units.Constants.hbar/np.sqrt(self.ensemble.lambdakin)
         )
 
     def get_omegan2(self):
@@ -802,7 +824,6 @@ class NormalModes:
         All beads of all atoms are propagated in one step.
         Works for both distinguishable particles and bosons. Difference is in fspring.
         """
-
         if self.nbeads == 1:
             pass
         else:
@@ -814,13 +835,22 @@ class NormalModes:
 
             # Free ring polymer dynamics are done with smaller time step detlat = dt/nmts
             dt = self.dt / self.nmts
-
-            for j in range(0, self.nmts):
-                self.beads.p += 0.5 * dt * self.fspring
-                self.beads.q += dt * self.beads.p / dstrip(self.beads.m3)
-                # The depend machinery will take care of automatically calculating
-                # the forces at the updated positions.
-                self.beads.p += 0.5 * dt * self.fspring
+            if self.activebeads_mask is not None:
+                # Apply dynamics only to active beads
+                for j in range(0, self.nmts):
+                    self.beads.p[self.activebeads_mask] += 0.5 * dt * self.fspring[self.activebeads_mask]
+                    self.beads.q[self.activebeads_mask] += dt * (self.beads.p / dstrip(self.beads.m3))[
+                        self.activebeads_mask]
+                    # The depend machinery will take care of automatically calculating
+                    # the forces at the updated positions.
+                    self.beads.p[self.activebeads_mask] += 0.5 * dt * self.fspring[self.activebeads_mask]
+            else:
+                for j in range(0, self.nmts):
+                    self.beads.p += 0.5 * dt * self.fspring
+                    self.beads.q += dt * self.beads.p / dstrip(self.beads.m3)
+                    # The depend machinery will take care of automatically calculating
+                    # the forces at the updated positions.
+                    self.beads.p += 0.5 * dt * self.fspring
 
     def free_qstep(self):
         """Position propagator for the free ring polymer.
@@ -853,6 +883,12 @@ class NormalModes:
             if len(self.bosons) > 0:
                 raise NotImplementedError(
                     "@Normalmodes : Bosonic forces not compatible right now with the exact or Cayley propagators."
+                )
+
+            # For exact/cayley propagators, raise error if constraints exist
+            if self.activebeads_mask is not None and not np.all(self.activebeads_mask):
+                raise NotImplementedError(
+                    "Active beads constraints only supported with BAB propagator"
                 )
 
             """

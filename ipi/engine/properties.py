@@ -327,6 +327,12 @@ class Properties:
                 "help": "The target temperature for the current ensemble",
                 "func": (lambda: self.ensemble.temp),
             },
+            ##New addition
+            "lambdakin": {
+                "dimension": "undefined",
+                "help": "The  lambdakin for the current ensemble",
+                "func": (lambda: self.ensemble.lambdakin),
+            },
             "ensemble_pressure": {
                 "dimension": "pressure",
                 "help": "The target pressure for the current ensemble",

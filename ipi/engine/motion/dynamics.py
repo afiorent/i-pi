@@ -54,9 +54,11 @@ class Dynamics(Motion):
         barostat=None,
         fixcom=False,
         fixatoms_dof=None,
+        fixbeads_dof=None,
         nmts=None,
         efield=None,
         bec=None,
+        test=False,
     ):
         """Initialises a "dynamics" motion object.
 
@@ -66,7 +68,7 @@ class Dynamics(Motion):
                 motion will be constrained or not. Defaults to False.
         """
 
-        super(Dynamics, self).__init__(fixcom=fixcom, fixatoms_dof=fixatoms_dof)
+        super(Dynamics, self).__init__(fixcom=fixcom, fixatoms_dof=fixatoms_dof,fixbeads_dof=fixbeads_dof)
 
         # initialize time step. this is the main time step that covers a full time step
         self._dt = depend_value(name="dt", value=timestep)
@@ -119,6 +121,11 @@ class Dynamics(Motion):
             self.fixatoms_dof = np.zeros(0, int)
         else:
             self.fixatoms_dof = fixatoms_dof
+
+        if fixbeads_dof is None:
+            self.fixbeads_dof = np.zeros(0, int)
+        else:
+            self.fixbeads_dof = fixbeads_dof
 
     def get_fixdof(self):
         """Calculate the number of fixed degrees of freedom, required for
@@ -281,6 +288,7 @@ class DummyIntegrator:
         self.barostat = motion.barostat
         self.fixcom = motion.fixcom
         self.fixatoms_dof = motion.fixatoms_dof
+        self.fixbeads_dof = motion.fixbeads_dof
         self.enstype = motion.enstype
 
         # no need to dpipe these are really just references
@@ -302,6 +310,23 @@ class DummyIntegrator:
         else:
             self.activeatoms_mask = False
 
+        # check whether fixed indexes make sense for beads
+        if len(self.fixbeads_dof) > 0:
+            # Create flattened indices for all beads and atoms
+            total_dof = self.beads.nbeads * 3 * self.beads.natoms
+            if np.any(self.fixbeads_dof >= total_dof):
+                raise ValueError(
+                    "Constrained bead indexes are out of bounds wrt. number of beads and atoms."
+                )
+
+            # Create mask assuming fixbeads_dof is flattened, then reshape
+            full_indices_flat = np.arange(total_dof)
+            activebeads_mask_flat = ~np.isin(full_indices_flat, self.fixbeads_dof)
+            self.activebeads_mask = activebeads_mask_flat.reshape(self.beads.nbeads, 3 * self.beads.natoms)
+            ### For debug purposes only
+            # print('! active beads mask', activebeads_mask_flat)
+        else:
+            self.activebeads_mask = False
         # total number of iteration in the inner-most MTS loop
         self._inmts = depend_value(name="inmts", func=lambda: np.prod(self.nmts))
         self._nmtslevels = depend_value(name="nmtslevels", func=lambda: len(self.nmts))
@@ -390,6 +415,21 @@ class DummyIntegrator:
             )
             beads.p[:, self.fixatoms_dof] = 0.0
 
+        if len(self.fixbeads_dof) > 0:
+            m3 = dstrip(beads.m3)
+            p = dstrip(beads.p)
+
+            # Extract bead and atom indices from flattened DOF indices
+            ibead_indices = self.fixbeads_dof // (3 * self.beads.natoms)
+            jatom_dof_indices = (self.fixbeads_dof % (3 * self.beads.natoms))
+
+            # Add kinetic energy contribution for fixed bead-atom pairs
+            self.ensemble.eens += 0.5 * np.sum(
+                p[ibead_indices, jatom_dof_indices] ** 2 / m3[ibead_indices, jatom_dof_indices]
+            )
+
+            # Zero out momenta for fixed bead-atom pairs
+            beads.p[ibead_indices, jatom_dof_indices] = 0.0
 
 dproperties(
     DummyIntegrator,
@@ -426,6 +466,15 @@ class NVEIntegrator(DummyIntegrator):
             if level == 0 and self.ensemble.has_bias:  # adds bias in the outer loop
                 self.beads.p[:, self.activeatoms_mask] += (
                     dstrip(self.bias.f)[:, self.activeatoms_mask] * self.pdt[level]
+                )
+        elif len(self.fixbeads_dof) > 0:
+            self.beads.p[self.activebeads_mask] += (
+                dstrip(self.forces.mts_forces[level].f)[self.activebeads_mask]
+                * self.pdt[level]
+            )
+            if level == 0 and self.ensemble.has_bias:  # adds bias in the outer loop
+                self.beads.p[self.activebeads_mask] += (
+                    dstrip(self.bias.f)[self.activebeads_mask] * self.pdt[level]
                 )
         else:
             self.beads.p[:] += dstrip(self.forces.mts_forces[level].f) * self.pdt[level]
