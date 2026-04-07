@@ -461,8 +461,13 @@ class NormalModes:
         between replicas.
         """
         # print('!lambda kin from normal mode',self.ensemble.lambdakin)
+        # depend on ensemble.lambdaqkin (renamed from lambdakin)
         return (
-            self.ensemble.temp * self.nbeads * units.Constants.kb / units.Constants.hbar/np.sqrt(self.ensemble.lambdakin)
+            self.ensemble.temp
+            * self.nbeads
+            * units.Constants.kb
+            / units.Constants.hbar
+            / np.sqrt(self.ensemble.lambdaqkin)
         )
 
     def get_omegan2(self):

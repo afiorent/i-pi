@@ -82,7 +82,7 @@ class Ensemble:
         bweights=None,
         hweights=None,
         time=0.0,
-        lambdakin=1,#multiply the quantum kinetic energy
+        lambdaqkin=1,  # multiply the quantum kinetic energy (renamed from lambdakin)
     ):
         """Initialises Ensemble.
 
@@ -91,8 +91,8 @@ class Ensemble:
             fixcom: An optional boolean which decides whether the centre of mass
                 motion will be constrained or not. Defaults to False.
         """
-        self._lambdakin = depend_value(name="lambdakin")
-        self.lambdakin=lambdakin
+        self._lambdaqkin = depend_value(name="lambdaqkin")
+        self.lambdaqkin = lambdaqkin
         self._temp = depend_value(name="temp")
         if temp is not None:
             self.temp = temp
@@ -152,7 +152,7 @@ class Ensemble:
             bweights=dstrip(self.bweights).copy(),
             hweights=dstrip(self.hweights).copy(),
             time=self.time,
-            lambdakin=self.lambdakin, #ADDED lambdakin in the copy
+            lambdaqkin=self.lambdaqkin, # ADDED lambdaqkin in the copy (was lambdakin)
         )
 
     def bind(
@@ -298,6 +298,6 @@ dproperties(
         "econs",
         "has_bias",
         "lpens",
-        "lambdakin", ##Added lambdakin
+        "lambdaqkin", ## Added lambdaqkin (renamed from lambdakin)
     ],
 )
