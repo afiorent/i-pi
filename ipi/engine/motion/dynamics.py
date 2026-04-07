@@ -15,7 +15,7 @@ import numpy as np
 from ipi.engine.motion import Motion
 from ipi.utils.depend import *
 from ipi.engine.thermostats import Thermostat
-from ipi.engine.barostats import Barostat
+from ipi.engine.barostats import Barostat, BaroRGB
 from ipi.utils.softexit import softexit
 from ipi.utils.messages import warning, verbosity
 
@@ -216,11 +216,15 @@ class Dynamics(Motion):
                     raise ValueError(
                         "The barostat and its mode have to be specified for constant-p integrators"
                     )
-                if np.allclose(self.ensemble.pext, -12345):
+                if np.any(np.isnan(self.ensemble.pext)):
                     raise ValueError("Unspecified pressure for a constant-p integrator")
             elif self.enstype == "nst":
-                if np.allclose(self.ensemble.stressext.diagonal(), -12345):
+                if np.any(np.isnan(self.ensemble.stressext)):
                     raise ValueError("Unspecified stress for a constant-s integrator")
+                if type(self.barostat) is not BaroRGB:
+                    raise ValueError(
+                        "NST ensemble only supported with the RGB ('anisotropic') barostat."
+                    )
         if self.enstype == "nve" and self.beads.nbeads > 1:
             if self.ensemble.temp < 0:
                 raise ValueError(
@@ -587,7 +591,9 @@ class NVTCCIntegrator(NVTIntegrator):
         self.nm.pnm[0, :] = 0.0
         self.pconstraints()
 
-        # self.qcstep() # for the moment I just avoid doing the centroid step.
+        # The centroid is constrained, so qcstep is skipped, but the internal
+        # ring-polymer modes still need the two half-step free propagations.
+        self.nm.free_qstep()
         self.nm.free_qstep()
 
         self.pstep()
