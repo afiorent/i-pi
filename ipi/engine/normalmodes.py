@@ -276,7 +276,7 @@ class NormalModes:
 
         # create path-frequencies related properties
         self._omegan = depend_value(
-            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp,self.ensemble._lambdakin] #now omegan it depends on both TemperatureRamp and LambdaRamp
+            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp, self.ensemble._lambdaqkin]  # now omegan depends on both TemperatureRamp and Qkinramp
         )
         self._omegan2 = depend_value(
             name="omegan2", func=self.get_omegan2, dependencies=[self._omegan]
@@ -460,7 +460,7 @@ class NormalModes:
         """Returns the effective vibrational frequency for the interaction
         between replicas.
         """
-        # print('!lambda kin from normal mode',self.ensemble.lambdakin)
+        # print('!lambda qkin from normal mode', self.ensemble.lambdaqkin)
         # depend on ensemble.lambdaqkin (renamed from lambdakin)
         return (
             self.ensemble.temp

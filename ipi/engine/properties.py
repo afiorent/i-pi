@@ -328,10 +328,10 @@ class Properties:
                 "func": (lambda: self.ensemble.temp),
             },
             ##New addition
-            "lambdakin": {
+            "lambdaqkin": {
                 "dimension": "undefined",
-                "help": "The  lambdakin for the current ensemble",
-                "func": (lambda: self.ensemble.lambdakin),
+                "help": "The lambdaqkin for the current ensemble",
+                "func": (lambda: self.ensemble.lambdaqkin),
             },
             "ensemble_pressure": {
                 "dimension": "pressure",
@@ -3068,8 +3068,8 @@ class Trajectories:
                 "func": self.get_rg,
             },
             "extras": {
-                "help": """The additional data returned by the client code. If the attribute "extra_type" is specified, and if the 
-                    data is JSON formatted, it prints only the specified field. Otherwise (or if extra_type="raw") the full string 
+                "help": """The additional data returned by the client code. If the attribute "extra_type" is specified, and if the
+                    data is JSON formatted, it prints only the specified field. Otherwise (or if extra_type="raw") the full string
                     is printed verbatim. Will print out one file per bead, unless the bead attribute is set by the user.""",
                 "func": (lambda: self.system.forces.extras),
             },
@@ -3078,7 +3078,7 @@ class Trajectories:
                 "help": """The contribution to the system forces from one of the force components.
                        Takes one mandatory argument index (zero-based) that indicates which component of the
                        potential must be returned. The optional argument 'bead' will print the potential associated
-                       with the specified bead (interpolated to the full ring polymer), otherwise the centoid force is computed. 
+                       with the specified bead (interpolated to the full ring polymer), otherwise the centoid force is computed.
                        If the potential is weighed, the weight will be applied. """,
                 "func": lambda index, bead="-1": (
                     self.system.forces.forces_component(int(index)).sum(axis=0)
@@ -3092,7 +3092,7 @@ class Trajectories:
                 "help": """The contribution to the system forces from one of the force components.
                        Takes one mandatory argument index (zero-based) that indicates which component of the
                        potential must be returned. The optional argument 'bead' will print the potential associated
-                       with the specified bead (with the level of discretization of the component), otherwise the 
+                       with the specified bead (with the level of discretization of the component), otherwise the
                        centoid force is computed. The weight of the potential is not applied. """,
                 "func": lambda index, bead="-1": (
                     self.system.forces.forces_component(
@@ -3105,11 +3105,11 @@ class Trajectories:
                 ),
             },
             "extras_component_raw": {
-                "help": """The additional data returned by the client code, printed verbatim or expanded 
-                           as a dictionary. See "extras". 
-                           Fetches the extras from a specific force component, indicated in parentheses 
-                           and a specific bead [extras_component_raw(idx; bead=0)]. 
-                           Never applies weighting or contraction, and does not automatically sum 
+                "help": """The additional data returned by the client code, printed verbatim or expanded
+                           as a dictionary. See "extras".
+                           Fetches the extras from a specific force component, indicated in parentheses
+                           and a specific bead [extras_component_raw(idx; bead=0)].
+                           Never applies weighting or contraction, and does not automatically sum
                            over beads as we don't know if the extras are numeric""",
                 "func": (lambda idx: (self.system.forces.extras_component(int(idx)))),
             },

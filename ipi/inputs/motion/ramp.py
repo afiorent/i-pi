@@ -25,7 +25,7 @@ from ipi.engine.motion import *
 from ipi.utils.inputvalue import *
 from ipi.utils.units import *
 
-__all__ = ["InputTemperatureRamp", "InputPressureRamp","InputLambdaRamp"]
+__all__ = ["InputTemperatureRamp", "InputPressureRamp", "InputQKinRamp"]
 
 
 class InputTemperatureRamp(InputDictionary):
@@ -157,10 +157,10 @@ class InputPressureRamp(InputDictionary):
         return rv
 
 
-class InputLambdaRamp(InputDictionary):
-    """Lambda ramp options.
+class InputQKinRamp(InputDictionary):
+    """QKin ramp options.
 
-    Contains options controlling a lambda ramp (quench/heating)
+    Contains options controlling a lambdaqkin ramp
 
     """
 
@@ -209,11 +209,11 @@ class InputLambdaRamp(InputDictionary):
         ),
     }
 
-    default_help = """LambdaRamp Motion class. It just updates the ensemble
+    default_help = """QKinRamp Motion class. It just updates the ensemble
                     lambda in steps, between the indicated values, and
                     then holds to the highest value. It should typically be combined
                     with a dynamics class and thermostats, using a MultiMotion. Multimotion not yet implemented"""
-    default_label = "LambdaRAMP"
+    default_label = "QKinRAMP"
 
     def store(self, ramp):
         if ramp == {}:
@@ -226,5 +226,5 @@ class InputLambdaRamp(InputDictionary):
         self.current_step.store(ramp.current_step)
 
     def fetch(self):
-        rv = super(InputLambdaRamp, self).fetch()
+        rv = super(InputQKinRamp, self).fetch()
         return rv
