@@ -216,6 +216,9 @@ class Simulation:
 
         self.chk = None
         self.rollback = True
+        self.finished = False
+        self.exit_status = "success"
+        self.exit_message = " @ SIMULATION: Exiting cleanly."
 
     def bind(self, read_only=False):
         """Calls the bind routines for all the objects in the simulation.
@@ -284,11 +287,6 @@ class Simulation:
                         no.print_header()
                     isys += 1
 
-        if self.threading:
-            self.executor = ThreadPoolExecutor(
-                max_workers=max(len(self.syslist), len(self.outputs))
-            )
-
         self.chk = eoutputs.CheckpointOutput("RESTART", 1, True, 0)
         self.chk.bind(self)
 
@@ -328,6 +326,24 @@ class Simulation:
         in the communication between the driver and the PIMD code.
         """
 
+        # the thread pool lives for the duration of one run: workers are joined
+        # before returning, so that any thread-local state of external libraries
+        # (e.g. torch) is torn down while the interpreter is fully alive.
+        # threads that are cleaned up during interpreter shutdown can abort
+        # the process
+        if self.threading:
+            self.executor = ThreadPoolExecutor(
+                max_workers=max(len(self.syslist), len(self.outputs))
+            )
+        try:
+            self._run_loop(write_outputs)
+        finally:
+            if self.threading:
+                self.executor.shutdown(wait=True)
+
+    def _run_loop(self, write_outputs=True):
+        """Implements the main loop of `run`."""
+
         # prints inital configuration -- only if we are not restarting
         if self.step == 0 and write_outputs:
             self.step = -1
@@ -360,7 +376,7 @@ class Simulation:
             # exit requests without screwing the trajectory
 
             steptime = -time.time()
-            if softexit.triggered:
+            if softexit.triggered or self.finished:
                 break
 
             # save a consistent state of the simulation that will be saved as a RESTART file in case of premature (soft) exit
@@ -369,7 +385,7 @@ class Simulation:
 
             self.run_step(self.step)
 
-            if softexit.triggered:
+            if softexit.triggered or self.finished:
                 # Don't write if we are about to exit.
                 break
 
@@ -434,16 +450,28 @@ class Simulation:
             for s in self.syslist:
                 # creates separate threads for the different systems
                 st = self.executor.submit(s.motion.step, step=step)
-                stepthreads.append(st)
+                stepthreads.append((st, s.motion))
 
-            for st in stepthreads:
+            for st, motion in stepthreads:
                 if softexit.triggered:
                     return
                 st.result()
+                if motion.finished:
+                    self.finished = True
+                    self.exit_status = motion.exit_status or "success"
+                    self.exit_message = motion.exit_message
+
+            if self.finished:
+                return
         else:
             for s in self.syslist:
                 s.motion.step(step=step)
                 if softexit.triggered:
+                    return
+                if s.motion.finished:
+                    self.finished = True
+                    self.exit_status = s.motion.exit_status or "success"
+                    self.exit_message = s.motion.exit_message
                     return
 
         # does the "super motion" step
