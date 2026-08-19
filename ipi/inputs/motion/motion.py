@@ -41,6 +41,7 @@ from ipi.engine.motion import (
     InstantonMotion,
     TemperatureRamp,
     PressureRamp,
+    LambdaRamp,
     AtomSwap,
     Planetary,
     AlKMC,
@@ -63,7 +64,7 @@ from .scphonons import InputSCPhonons
 from .alchemy import InputAlchemy
 from .atomswap import InputAtomSwap
 from .planetary import InputPlanetary
-from .ramp import InputTemperatureRamp, InputPressureRamp
+from .ramp import InputTemperatureRamp, InputPressureRamp,InputLambdaRamp
 from .al6xxx_kmc import InputAlKMC
 from .driven_dynamics import InputDrivenDynamics
 from ipi.utils.units import *
@@ -105,6 +106,7 @@ class InputMotionBase(Input):
                     "constrained_dynamics",
                     "t_ramp",
                     "p_ramp",
+                    "lambda_ramp",
                     "alchemy",
                     "atomswap",
                     "planetary",
@@ -141,6 +143,14 @@ class InputMotionBase(Input):
                 "dtype": int,
                 "default": np.zeros(0, int),
                 "help": "Indices of the degrees of freedom that should be held fixed.",
+            },
+        ),
+        "fixbeads": (
+            InputArray,
+            {
+                "dtype": int,
+                "default": np.zeros(0, int),
+                "help": " Indices i*nbeads+jatoms indicating the j-th atom on the i-th bead should be held fixed.",
             },
         ),
         "optimizer": (
@@ -219,6 +229,10 @@ class InputMotionBase(Input):
         "p_ramp": (
             InputPressureRamp,
             {"default": {}, "help": "Option for pressure ramp"},
+        ),
+        "lambda_ramp": (
+            InputLambdaRamp,
+            {"default": {}, "help": "Option for lambda ramp"},
         ),
         "instanton": (
             InputInst,
@@ -309,6 +323,10 @@ class InputMotionBase(Input):
         elif type(sc) is PressureRamp:
             self.mode.store("p_ramp")
             self.p_ramp.store(sc)
+        elif type(sc) is LambdaRamp:
+            self.mode.store("lambda_ramp")
+            self.lambda_ramp.store(sc)
+            tsc = 1
         elif type(sc) is AlKMC:
             self.mode.store("al-kmc")
             self.al6xxx_kmc.store(sc)
@@ -335,10 +353,11 @@ class InputMotionBase(Input):
         fixcom = self.fixcom.fetch()
         fixatoms = self.fixatoms.fetch()
         fixatoms_dof = self.fixatoms_dof.fetch()
+        fixbeads = self.fixbeads.fetch()
 
-        if (fixcom is True) and ((len(fixatoms) > 0) or (len(fixatoms_dof) > 0)):
+        if (fixcom is True) and ((len(fixatoms) > 0) or (len(fixatoms_dof) > 0) or (len(fixbeads) > 0)):
             warning(
-                "The flag fixcom is true by default but you have chosen to fix some atoms (or degree of freedom) explicitly. Because the two cannot be used together, we are overriding the fixcom setting and making it False.",
+                "The flag fixcom is true by default but you have chosen to fix some atoms/beads (or degree of freedom ) explicitly. Because the two cannot be used together, we are overriding the fixcom setting and making it False.",
                 verbosity.low,
             )
             fixcom = False
@@ -354,6 +373,13 @@ class InputMotionBase(Input):
             else:
                 fixatoms_dof = fixatoms[:, np.newaxis] * 3 + np.array([0, 1, 2])
         fixatoms_dof = np.sort(fixatoms_dof.flatten())
+
+        # Convert fixbeads to fixbeads_dof similar to fixatoms
+        if len(fixbeads) > 0:
+            fixbeads_dof = fixbeads[:, np.newaxis] * 3 + np.array([0, 1, 2])
+            fixbeads_dof = np.sort(fixbeads_dof.flatten())
+        else:
+            fixbeads_dof = np.zeros(0, int)
 
         if self.mode.fetch() == "replay":
             sc = Replay(
@@ -389,7 +415,7 @@ class InputMotionBase(Input):
             )
         elif self.mode.fetch() == "dynamics":
             sc = Dynamics(
-                fixcom=fixcom, fixatoms_dof=fixatoms_dof, **self.dynamics.fetch()
+                fixcom=fixcom, fixatoms_dof=fixatoms_dof, fixbeads_dof=fixbeads_dof, **self.dynamics.fetch()
             )
         elif self.mode.fetch() == "constrained_dynamics":
             sc = ConstrainedDynamics(
@@ -429,6 +455,8 @@ class InputMotionBase(Input):
             sc = TemperatureRamp(**self.t_ramp.fetch())
         elif self.mode.fetch() == "p_ramp":
             sc = PressureRamp(**self.p_ramp.fetch())
+        elif self.mode.fetch() == "lambda_ramp":
+            sc = LambdaRamp(**self.lambda_ramp.fetch())
         elif self.mode.fetch() == "al-kmc":
             sc = AlKMC(
                 fixcom=fixcom, fixatoms_dof=fixatoms_dof, **self.al6xxx_kmc.fetch()

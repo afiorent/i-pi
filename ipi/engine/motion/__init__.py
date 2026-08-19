@@ -20,6 +20,6 @@ from .alchemy import AlchemyMC
 from .vscf import NormalModeMover
 from .planetary import Planetary
 from .atomswap import AtomSwap
-from .ramp import TemperatureRamp, PressureRamp
+from .ramp import TemperatureRamp, PressureRamp,LambdaRamp
 from .al6xxx_kmc import AlKMC
 from .driven_dynamics import DrivenDynamics

@@ -25,7 +25,7 @@ from ipi.engine.motion import *
 from ipi.utils.inputvalue import *
 from ipi.utils.units import *
 
-__all__ = ["InputTemperatureRamp", "InputPressureRamp"]
+__all__ = ["InputTemperatureRamp", "InputPressureRamp","InputLambdaRamp"]
 
 
 class InputTemperatureRamp(InputDictionary):
@@ -154,4 +154,77 @@ class InputPressureRamp(InputDictionary):
 
     def fetch(self):
         rv = super(InputPressureRamp, self).fetch()
+        return rv
+
+
+class InputLambdaRamp(InputDictionary):
+    """Lambda ramp options.
+
+    Contains options controlling a lambda ramp (quench/heating)
+
+    """
+
+    fields = {
+        "lambda_start": (
+            InputValue,
+            {
+                "dtype": float,
+                "dimension": "undefined",
+                "default": 1.0,
+                "help": "Initial lambda",
+            },
+        ),
+        "lambda_end": (
+            InputValue,
+            {
+                "dtype": float,
+                "dimension": "undefined",
+                "default": 1.0,
+                "help": "Final lambda",
+            },
+        ),
+        "logscale": (
+            InputValue,
+            {
+                "dtype": bool,
+                "default": False,
+                "help": "Change lambda on a logarihthmic scale.",
+            },
+        ),
+        "sqrtscale": (
+            InputValue,
+            {
+                "dtype": bool,
+                "default": False,
+                "help": "The square root of lambda changes linearly.",
+            },
+        ),
+        "total_steps": (
+            InputValue,
+            {"dtype": int, "default": 0, "help": "Total number of steps for the ramp"},
+        ),
+        "current_step": (
+            InputValue,
+            {"dtype": int, "default": 0, "help": "Current step along the ramp"},
+        ),
+    }
+
+    default_help = """LambdaRamp Motion class. It just updates the ensemble
+                    lambda in steps, between the indicated values, and
+                    then holds to the highest value. It should typically be combined
+                    with a dynamics class and thermostats, using a MultiMotion. Multimotion not yet implemented"""
+    default_label = "LambdaRAMP"
+
+    def store(self, ramp):
+        if ramp == {}:
+            return
+        self.lambda_start.store(ramp.lambda_start)
+        self.lambda_end.store(ramp.lambda_end)
+        self.logscale.store(ramp.logscale)
+        self.sqrtscale.store(ramp.sqrtscale)
+        self.total_steps.store(ramp.total_steps)
+        self.current_step.store(ramp.current_step)
+
+    def fetch(self):
+        rv = super(InputLambdaRamp, self).fetch()
         return rv
