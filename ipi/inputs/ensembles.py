@@ -1,3 +1,4 @@
+# python
 """Creates objects that deal with the different ensembles."""
 
 # This file is part of i-PI.
@@ -45,6 +46,15 @@ class InputEnsemble(Input):
                 "default": -1.0,
                 "help": "The temperature of the system.",
                 "dimension": "temperature",
+            },
+        ),
+        "lambdaqkin": (
+            InputValue,
+            {
+                "dtype": float,
+                "default": 1.0,
+                "help": "Prefactor of the quantum kinetic energy operator",
+                "dimension": "undefined",
             },
         ),
         "pressure": (
@@ -125,6 +135,8 @@ class InputEnsemble(Input):
         self.bias_weights.store(ens.bweights)
         self.hamiltonian_weights.store(ens.hweights)
         self.time.store(ens.time)
+        # now using the new canonical attribute name
+        self.lambdaqkin.store(ens.lambdaqkin)
 
     def fetch(self):
         """Creates an ensemble object.
@@ -145,6 +157,7 @@ class InputEnsemble(Input):
             bweights=self.bias_weights.fetch(),
             hweights=self.hamiltonian_weights.fetch(),
             time=self.time.fetch(),
+            lambdaqkin=self.lambdaqkin.fetch()
         )
 
         return ens

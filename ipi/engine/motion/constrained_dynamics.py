@@ -63,6 +63,7 @@ class ConstrainedDynamics(Dynamics):
         barostat=None,
         fixcom=False,
         fixatoms=None,
+        fixbeads=None,
         nmts=None,
         nsteps_geo=1,
         nsteps_o=1,
@@ -77,7 +78,7 @@ class ConstrainedDynamics(Dynamics):
                 motion will be constrained or not. Defaults to False.
         """
 
-        super(Dynamics, self).__init__(fixcom=fixcom, fixatoms=fixatoms)
+        super(Dynamics, self).__init__(fixcom=fixcom, fixatoms=fixatoms,fixbeads=fixbeads)
         self._dt = depend_value(name="dt", value=timestep)
 
         if thermostat is None:
@@ -144,6 +145,12 @@ class ConstrainedDynamics(Dynamics):
         if len(self.fixatoms) > 0:
             raise ValueError("Cannot fix atoms together with constrained MD")
 
+        if fixbeads is None:
+            self.fixbeads = np.zeros(0, int)
+        else:
+            self.fixbeads = fixbeads
+        if len(self.fixbeads) > 0:
+            raise ValueError("Cannot fix beads together with constrained MD")
         if csolver is None:
             self.csolver = ConstraintSolver(
                 self.constraint_list, tolerance=0.0001, maxit=10000, norm_order=2

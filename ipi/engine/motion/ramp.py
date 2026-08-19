@@ -10,7 +10,7 @@ Algorithms implemented by Robert Meissner and Riccardo Petraglia, 2016
 
 from ipi.engine.motion import Motion
 
-__all__ = ["TemperatureRamp", "PressureRamp"]
+__all__ = ["TemperatureRamp", "PressureRamp", "QKinRamp"]
 
 
 class TemperatureRamp(Motion):
@@ -112,4 +112,61 @@ class PressureRamp(Motion):
                 self.ensemble.pext = (
                     self.p_start
                     + self.current_step * (self.p_end - self.p_start) / self.total_steps
+                )
+
+
+class QKinRamp(Motion):
+    """Lambdaqkin ramp.
+
+    Attributes:
+    """
+
+    def __init__(
+        self,
+        fixcom=False,
+        fixatoms_dof=None,
+        lambda_start=1.0,
+        lambda_end=1.0,
+        total_steps=0,
+        current_step=0,
+        logscale=True,
+        sqrtscale=False,
+    ):
+        """Initialises a Lambdaqkin ramp motion
+
+        Args:
+        """
+
+        super(QKinRamp, self).__init__()
+        self.lambda_start = lambda_start
+        self.lambda_end = lambda_end
+        self.total_steps = total_steps
+        self.current_step = current_step
+        self.logscale = logscale
+        self.sqrtscale = sqrtscale
+
+    def bind(self, ens, beads, nm, cell, bforce, prng, omaker):
+        super(QKinRamp, self).bind(ens, beads, nm, cell, bforce, prng, omaker)
+
+    def step(self, step=None):
+        """Updates ensemble temperature. Yes, that's it everything else should follow through"""
+
+        self.current_step += 1
+        # just sets the temperature
+        if self.current_step >= self.total_steps:
+            self.ensemble.lambdaqkin = self.lambda_end
+        else:
+            if self.logscale:
+                self.ensemble.lambdaqkin = self.lambda_start * (self.lambda_end / self.lambda_start) ** (
+                    self.current_step * 1.0 / self.total_steps
+                )
+            elif self.sqrtscale:
+                self.ensemble.lambdaqkin = (
+                    self.lambda_start**0.5
+                    + self.current_step * (self.lambda_end**0.5 - self.lambda_start**0.5) / self.total_steps
+                )**2
+            else:
+                self.ensemble.lambdaqkin = (
+                    self.lambda_start
+                    + self.current_step * (self.lambda_end - self.lambda_start) / self.total_steps
                 )

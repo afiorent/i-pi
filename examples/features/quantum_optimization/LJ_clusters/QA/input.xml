@@ -1,0 +1,46 @@
+<simulation mode="static" verbosity="medium">
+	<output prefix='simulation'>
+    <properties stride='100' filename='out'>  [ step, time{picosecond}, conserved{kelvin}, temperature{kelvin}, kinetic_cv{kelvin}, potential{electronvolt}, pressure_cv{megapascal}, kinetic_td{kelvin},lambdaqkin ] </properties>
+    <trajectory filename='pos' stride='1000'> positions </trajectory>
+    <trajectory filename='roc' stride='1000'> x_centroid </trajectory>
+  </output>
+   <total_steps>50000       </total_steps>
+  <ffsocket mode='unix' name='lj_driver' pbc='False'>
+    <address>localhost</address>
+      <latency>0.0001</latency>
+  </ffsocket>
+   <system >
+       <initialize nbeads='16'> 
+	       <file mode='chk' >  RESTART </file>
+        	<!--very large cell to avoid interaction through PBC -->
+           <cell mode='abc'> [300.0,  300.0,  300.0  ] </cell>
+       </initialize>
+       <forces>
+           <force forcefield='lj_driver'> </force>
+       </forces>
+       <ensemble>
+           <temperature units="kelvin">10 </temperature>
+           <lambdaqkin>16</lambdaqkin>
+       </ensemble>
+    <motion mode='multi'>
+       <motion mode='dynamics'>
+	   <fixcom>True</fixcom>
+           <dynamics mode='nvt'>
+               <thermostat mode='langevin'>
+                 <tau units='femtosecond'> 10 </tau>
+               </thermostat>
+               <timestep units='femtosecond'> 0.5 </timestep>
+           </dynamics>
+       </motion>
+    <motion mode="qkin_ramp">
+       <qkin_ramp>
+         <lambda_start> 16 </lambda_start>
+         <lambda_end> 0.0001 </lambda_end>
+         <total_steps>50000  </total_steps>
+         <logscale> False </logscale>
+         <sqrtscale> True </sqrtscale>
+     </qkin_ramp>
+    </motion>
+    </motion>
+   </system>
+</simulation>
