@@ -13,12 +13,12 @@ Changes in this version:
 Usage:
   python update_RPQA.py --iteration 0 --nbeads 32 --root . --final-root . --template RPQA_template.xml
 """
+
 from __future__ import annotations
 
 import argparse
 import os
 import sys
-from pathlib import Path
 
 import numpy as np
 from jinja2 import Template
@@ -28,17 +28,32 @@ import ipi  # assumes your i-pi fork exposes read_output and read_trajectory
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Update RPQA using min{iteration}.out to pick best bead.")
-    p.add_argument("--iteration", "-i", type=int, required=True, help="current iteration index")
+    p = argparse.ArgumentParser(
+        description="Update RPQA using min{iteration}.out to pick best bead."
+    )
+    p.add_argument(
+        "--iteration", "-i", type=int, required=True, help="current iteration index"
+    )
     p.add_argument("--nbeads", "-b", type=int, default=32, help="number of beads")
     p.add_argument("--hbar2-0", type=float, default=5.0, help="start hbar2")
     p.add_argument("--hbar2-1", type=float, default=1.0, help="end hbar2")
     p.add_argument("--N-iteration", type=int, default=10, help="number of hbar2 points")
     p.add_argument("--root", "-r", default=".", help="root directory where files live")
-    p.add_argument("--template", "-t", default="RPQA_template.xml", help="jinja2 template path")
-    p.add_argument("--final-root", "-o", default=".", help="where to write init and input files")
-    p.add_argument("--simu-steps", type=int, default=10000, help="number of simulation steps (also used as QA_steps)")
-    p.add_argument("--temperature", type=float, default=10.0, help="simulation temperature")
+    p.add_argument(
+        "--template", "-t", default="RPQA_template.xml", help="jinja2 template path"
+    )
+    p.add_argument(
+        "--final-root", "-o", default=".", help="where to write init and input files"
+    )
+    p.add_argument(
+        "--simu-steps",
+        type=int,
+        default=10000,
+        help="number of simulation steps (also used as QA_steps)",
+    )
+    p.add_argument(
+        "--temperature", type=float, default=10.0, help="simulation temperature"
+    )
     return p.parse_args()
 
 
@@ -50,11 +65,15 @@ def read_min_output(min_out_path: str):
     else:
         out = ret
     if not isinstance(out, dict):
-        raise RuntimeError(f"ipi.read_output returned unexpected type for {min_out_path}: {type(out)}")
+        raise RuntimeError(
+            f"ipi.read_output returned unexpected type for {min_out_path}: {type(out)}"
+        )
     return out
 
 
-def get_final_bead_potentials_from_output(output_dict: dict, expected_nbeads: int | None = None):
+def get_final_bead_potentials_from_output(
+    output_dict: dict, expected_nbeads: int | None = None
+):
     """
     Extract final bead potentials using the explicit key 'bead_potentials' when available.
     Returns a 1D numpy array of final potentials per bead.
@@ -70,11 +89,16 @@ def get_final_bead_potentials_from_output(output_dict: dict, expected_nbeads: in
     else:
         last = arr.reshape(-1)
     if expected_nbeads is not None and last.size != expected_nbeads:
-        print(f"Warning: expected {expected_nbeads} bead potentials but found {last.size}", file=sys.stderr)
+        print(
+            f"Warning: expected {expected_nbeads} bead potentials but found {last.size}",
+            file=sys.stderr,
+        )
     return np.asarray(last)
 
 
-def assemble_init_file(iteration: int, best_bead: int, nbeads: int, root: str, final_root: str):
+def assemble_init_file(
+    iteration: int, best_bead: int, nbeads: int, root: str, final_root: str
+):
     """
     Build init_{iteration}.xyz containing one frame per bead:
      - for bead != best_bead:
@@ -97,7 +121,9 @@ def assemble_init_file(iteration: int, best_bead: int, nbeads: int, root: str, f
                 if iteration == 0:
                     sim_pos = os.path.join(root, f"delocalization.pos_{bead:02d}.xyz")
                 else:
-                    sim_pos = os.path.join(root, f"simulation{iteration-1}.pos_{bead:02d}.xyz")
+                    sim_pos = os.path.join(
+                        root, f"simulation{iteration-1}.pos_{bead:02d}.xyz"
+                    )
                 if not os.path.exists(sim_pos):
                     raise FileNotFoundError(f"Neither {min_pos} nor {sim_pos} exist")
                 frames_sim = ipi.read_trajectory(sim_pos)
@@ -107,7 +133,9 @@ def assemble_init_file(iteration: int, best_bead: int, nbeads: int, root: str, f
             if iteration == 0:
                 sim_pos = os.path.join(root, f"delocalization.pos_{bead:02d}.xyz")
             else:
-                sim_pos = os.path.join(root, f"simulation{iteration-1}.pos_{bead:02d}.xyz")
+                sim_pos = os.path.join(
+                    root, f"simulation{iteration-1}.pos_{bead:02d}.xyz"
+                )
             if not os.path.exists(sim_pos):
                 raise FileNotFoundError(f"{sim_pos} not found")
             frames_sim = ipi.read_trajectory(sim_pos)
@@ -131,7 +159,7 @@ def build_fixbeads(N: int, best_bead: int):
 
 def build_hbar2_pair(i: int, N_iteration: int, hbar2_start: float, hbar2_end: float):
     sqrt_vals = np.linspace(np.sqrt(hbar2_start), np.sqrt(hbar2_end), N_iteration)
-    hbar2_vals = sqrt_vals ** 2
+    hbar2_vals = sqrt_vals**2
     if i < 0:
         i = 0
     if i >= N_iteration:
@@ -183,22 +211,26 @@ def main():
     print(f"Chosen best bead: {best_bead} with final potential = {best_pot:.12g}")
 
     # 2) assemble init file (using min pos for best bead, previous simulation snapshots otherwise)
-    N, init_path, frames = assemble_init_file(iteration, best_bead, nbeads, root_dir, final_root)
+    N, init_path, frames = assemble_init_file(
+        iteration, best_bead, nbeads, root_dir, final_root
+    )
     print(f"Wrote init file: {init_path} (N_atoms={N})")
 
     # 3) compute fixbeads
     fixbeads = build_fixbeads(N, best_bead)
 
     # 4) pick hbar2 pair
-    hbar2_0, hbar2_1 = build_hbar2_pair(iteration, args.N_iteration, args.hbar2_0, args.hbar2_1)
+    hbar2_0, hbar2_1 = build_hbar2_pair(
+        iteration, args.N_iteration, args.hbar2_0, args.hbar2_1
+    )
 
     # 5) render template
     tpl_text = open(template_path).read()
     tpl = Template(tpl_text)
     rendered = tpl.render(
-        simu_steps = simu_steps,
-        QA_steps = simu_steps,
-        temperature = temperature,
+        simu_steps=simu_steps,
+        QA_steps=simu_steps,
+        temperature=temperature,
         init_file=os.path.basename(init_path),
         nbeads=nbeads,
         hbar2_0=hbar2_0,

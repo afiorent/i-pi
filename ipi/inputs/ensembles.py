@@ -157,7 +157,7 @@ class InputEnsemble(Input):
             bweights=self.bias_weights.fetch(),
             hweights=self.hamiltonian_weights.fetch(),
             time=self.time.fetch(),
-            lambdaqkin=self.lambdaqkin.fetch()
+            lambdaqkin=self.lambdaqkin.fetch(),
         )
 
         return ens

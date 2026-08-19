@@ -8,6 +8,7 @@ from ipi.utils.depend import depend_value, dproperties
 from ipi.engine.motion import Motion
 import numpy as np
 
+
 class MultiMotion(Motion):
     """A class to hold multiple motion objects to be executed serially."""
 
@@ -45,7 +46,10 @@ class MultiMotion(Motion):
         # for m in self.mlist:
         #     self.fixbeads_dof = self.fixbeads_dof.intersection(m.fixbeads_dof)
         self.fixbeads_dof = np.array(list(self.fixbeads_dof), dtype=int)
-        print('!MultiMotion fixing the following bead degrees of freedom:', self.fixbeads_dof)
+        print(
+            "!MultiMotion fixing the following bead degrees of freedom:",
+            self.fixbeads_dof,
+        )
 
     def get_totdt(self):
         dt = 0.0

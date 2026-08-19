@@ -356,7 +356,9 @@ class InputMotionBase(Input):
         fixatoms_dof = self.fixatoms_dof.fetch()
         fixbeads = self.fixbeads.fetch()
 
-        if (fixcom is True) and ((len(fixatoms) > 0) or (len(fixatoms_dof) > 0) or (len(fixbeads) > 0)):
+        if (fixcom is True) and (
+            (len(fixatoms) > 0) or (len(fixatoms_dof) > 0) or (len(fixbeads) > 0)
+        ):
             warning(
                 "The flag fixcom is true by default but you have chosen to fix some atoms/beads (or degree of freedom ) explicitly. Because the two cannot be used together, we are overriding the fixcom setting and making it False.",
                 verbosity.low,
@@ -416,7 +418,10 @@ class InputMotionBase(Input):
             )
         elif self.mode.fetch() == "dynamics":
             sc = Dynamics(
-                fixcom=fixcom, fixatoms_dof=fixatoms_dof, fixbeads_dof=fixbeads_dof, **self.dynamics.fetch()
+                fixcom=fixcom,
+                fixatoms_dof=fixatoms_dof,
+                fixbeads_dof=fixbeads_dof,
+                **self.dynamics.fetch()
             )
         elif self.mode.fetch() == "constrained_dynamics":
             sc = ConstrainedDynamics(

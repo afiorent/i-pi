@@ -151,7 +151,7 @@ class Ensemble:
             bweights=dstrip(self.bweights).copy(),
             hweights=dstrip(self.hweights).copy(),
             time=self.time,
-            lambdaqkin=self.lambdaqkin, # ADDED lambdaqkin in the copy (was lambdakin)
+            lambdaqkin=self.lambdaqkin,  # ADDED lambdaqkin in the copy (was lambdakin)
         )
 
     def bind(
@@ -297,6 +297,6 @@ dproperties(
         "econs",
         "has_bias",
         "lpens",
-        "lambdaqkin", ## Added lambdaqkin (renamed from lambdakin)
+        "lambdaqkin",  ## Added lambdaqkin (renamed from lambdakin)
     ],
 )

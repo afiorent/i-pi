@@ -18,6 +18,7 @@ Behavior:
 Usage:
   python join_and_merge.py --root N20/0/ --niterations 10 --nbeads 16
 """
+
 from __future__ import annotations
 
 import argparse
@@ -93,7 +94,9 @@ def normalize_read_output(ret):
     return out
 
 
-def merge_outputs_to_json(root: Path, niterations: int, out_json_name: str = "complete_simulation.json"):
+def merge_outputs_to_json(
+    root: Path, niterations: int, out_json_name: str = "complete_simulation.json"
+):
     """
     Merge simulation{i}.out files into a single dict, shifting 'time' and 'step(s)' columns.
     Writes JSON file with lists for each key and deletes original .out files on success.
@@ -150,7 +153,9 @@ def merge_outputs_to_json(root: Path, niterations: int, out_json_name: str = "co
                     else:
                         rep_len = 0
                     if rep_len > 0:
-                        merged[existing_key] = np.append(merged[existing_key], np.full(rep_len, np.nan))
+                        merged[existing_key] = np.append(
+                            merged[existing_key], np.full(rep_len, np.nan)
+                        )
 
     if not merged:
         print("No output data collected; nothing written.")
@@ -174,11 +179,30 @@ def merge_outputs_to_json(root: Path, niterations: int, out_json_name: str = "co
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Join per-iteration bead trajs and merge per-iteration outputs.")
-    p.add_argument("--root", "-r", default=".", help="root directory containing simulation*.pos_*.xyz and simulation*.out")
-    p.add_argument("--niterations", "-n", type=int, required=True, help="number of iterations (Niterations)")
-    p.add_argument("--nbeads", "-b", type=int, required=True, help="number of beads (nbeads)")
-    p.add_argument("--out-json", default="complete_simulation.json", help="output merged JSON filename")
+    p = argparse.ArgumentParser(
+        description="Join per-iteration bead trajs and merge per-iteration outputs."
+    )
+    p.add_argument(
+        "--root",
+        "-r",
+        default=".",
+        help="root directory containing simulation*.pos_*.xyz and simulation*.out",
+    )
+    p.add_argument(
+        "--niterations",
+        "-n",
+        type=int,
+        required=True,
+        help="number of iterations (Niterations)",
+    )
+    p.add_argument(
+        "--nbeads", "-b", type=int, required=True, help="number of beads (nbeads)"
+    )
+    p.add_argument(
+        "--out-json",
+        default="complete_simulation.json",
+        help="output merged JSON filename",
+    )
     return p.parse_args()
 
 

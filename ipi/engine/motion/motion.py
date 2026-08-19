@@ -31,7 +31,7 @@ class Motion:
         none
     """
 
-    def __init__(self, fixcom=False, fixatoms_dof=None,fixbeads_dof=None):
+    def __init__(self, fixcom=False, fixatoms_dof=None, fixbeads_dof=None):
         """Initialises Motion object.
 
         Args:
@@ -55,7 +55,7 @@ class Motion:
         else:
             self.fixbeads_dof = fixbeads_dof
             ### For debug purposes only
-            print("Fixing the following bead degrees of freedom:",fixbeads_dof)
+            print("Fixing the following bead degrees of freedom:", fixbeads_dof)
 
         self.beads = self.cell = self.forces = self.prng = self.nm = self.enstype = None
         self.finished = False

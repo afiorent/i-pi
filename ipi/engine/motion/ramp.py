@@ -157,16 +157,20 @@ class QKinRamp(Motion):
             self.ensemble.lambdaqkin = self.lambda_end
         else:
             if self.logscale:
-                self.ensemble.lambdaqkin = self.lambda_start * (self.lambda_end / self.lambda_start) ** (
-                    self.current_step * 1.0 / self.total_steps
-                )
+                self.ensemble.lambdaqkin = self.lambda_start * (
+                    self.lambda_end / self.lambda_start
+                ) ** (self.current_step * 1.0 / self.total_steps)
             elif self.sqrtscale:
                 self.ensemble.lambdaqkin = (
                     self.lambda_start**0.5
-                    + self.current_step * (self.lambda_end**0.5 - self.lambda_start**0.5) / self.total_steps
-                )**2
+                    + self.current_step
+                    * (self.lambda_end**0.5 - self.lambda_start**0.5)
+                    / self.total_steps
+                ) ** 2
             else:
                 self.ensemble.lambdaqkin = (
                     self.lambda_start
-                    + self.current_step * (self.lambda_end - self.lambda_start) / self.total_steps
+                    + self.current_step
+                    * (self.lambda_end - self.lambda_start)
+                    / self.total_steps
                 )
