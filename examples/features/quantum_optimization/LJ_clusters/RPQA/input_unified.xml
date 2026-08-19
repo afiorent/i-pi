@@ -1,0 +1,92 @@
+<!--
+  The whole RPQA loop in a single i-PI run, driven by the 'rpqa' smotion.
+
+  This is the one-file equivalent of run.sh, which instead starts i-PI four
+  times per iteration and shells out to update_RPQA.py in between. Here the
+  <smotion> relaxes the ring polymer every <pinning_interval> steps, pins the
+  replica sitting in the deepest minimum, and hands control back to the
+  annealing dynamics, so there is one continuous trajectory and one RESTART
+  covering the whole run. Which replica is pinned when is logged to
+  the .rpqa_pin file.
+
+  Run it with the same driver the scripted version uses:
+    i-pi input_unified.xml &> log.ipi &
+    i-pi-driver -m lj -o 5.270446,0.00367493,36.893122 -u -a localhost
+  (start a few drivers to evaluate the beads in parallel)
+
+  Two differences from run.sh worth knowing:
+   - momenta carry through a pinning event, where the scripted version
+     restarts each stage from an .xyz and so from zero velocities;
+   - the annealing schedule is one global sqrt-linear ramp rather than five
+     per-iteration segments, which is the same trajectory of lambdaqkin.
+-->
+<simulation mode="static" verbosity="medium">
+  <output prefix='rpqa'>
+    <properties stride='100' filename='out'>  [ step, time{picosecond}, conserved{kelvin}, temperature{kelvin}, kinetic_cv{kelvin}, potential{electronvolt}, lambdaqkin ] </properties>
+    <properties stride='100' filename='beadpot'>  [ step, bead_potentials{electronvolt} ] </properties>
+    <trajectory filename='pos' stride='1000'> positions </trajectory>
+    <trajectory filename='roc' stride='1000'> x_centroid </trajectory>
+    <checkpoint stride='1000'/>
+  </output>
+  <prng>
+    <seed>54321</seed>
+  </prng>
+  <!-- equilibration (1000) + 5 annealing intervals of 2000 -->
+  <total_steps>11000</total_steps>
+  <ffsocket mode='unix' name='lj_driver' pbc='False'>
+    <address>localhost</address>
+    <latency>0.0001</latency>
+  </ffsocket>
+  <system>
+    <initialize nbeads='16'>
+      <file mode='ase'> init.xyz </file>
+      <velocities mode='thermal' units='kelvin'> 10 </velocities>
+      <!-- very large cell to avoid interaction through PBC -->
+      <cell mode='abc'> [300.0, 300.0, 300.0] </cell>
+    </initialize>
+    <forces>
+      <force forcefield='lj_driver'> </force>
+    </forces>
+    <ensemble>
+      <temperature units="kelvin"> 10.0 </temperature>
+      <lambdaqkin> 16.0 </lambdaqkin>
+    </ensemble>
+    <!-- freezing a bead needs the Cartesian free-ring-polymer propagator -->
+    <normal_modes propagator='bab'/>
+    <motion mode='multi'>
+      <motion mode='dynamics'>
+        <fixcom>False</fixcom>
+        <!-- no <fixbeads> here: the smotion chooses and sets it -->
+        <dynamics mode='nvt'>
+          <thermostat mode='langevin'>
+            <tau units='femtosecond'> 10 </tau>
+          </thermostat>
+          <timestep units='femtosecond'> 0.5 </timestep>
+        </dynamics>
+      </motion>
+      <motion mode='qkin_ramp'>
+        <qkin_ramp>
+          <lambda_start> 16.0 </lambda_start>
+          <lambda_end> 0.0001 </lambda_end>
+          <total_steps> 11000 </total_steps>
+          <logscale> False </logscale>
+          <sqrtscale> True </sqrtscale>
+        </qkin_ramp>
+      </motion>
+    </motion>
+  </system>
+  <smotion mode='rpqa'>
+    <rpqa>
+      <pinning_interval> 2000 </pinning_interval>
+      <start_step> 1000 </start_step>
+      <max_relax_steps> 5000 </max_relax_steps>
+      <optimizer mode='lbfgs'>
+        <tolerances>
+          <energy> 1e-5 </energy>
+          <force> 1e-3 </force>
+          <position> 5e-3 </position>
+        </tolerances>
+      </optimizer>
+    </rpqa>
+  </smotion>
+</simulation>

@@ -109,6 +109,8 @@ class GeopMotion(Motion):
         elif self.mode == "bfgstrm":
             self.tr = tr_trm
             self.hessian = hessian_trm
+            # kept so that reset() can restore the initial trust radius
+            self.initial_values = {"tr_trm": tr_trm}
             self.optimizer = BFGSTRMOptimizer()
         elif self.mode == "lbfgs":
             self.corrections = corrections_lbfgs
@@ -128,12 +130,15 @@ class GeopMotion(Motion):
         else:
             self.optimizer = DummyOptimizer()
 
-    def reset(self):  # necessary for Al6xxx-kmc
+    def reset(self):  # necessary for Al6xxx-kmc and for the RPQA smotion
         # zeroes out all memory of previous steps
         self.old_x *= 0.0
         self.old_f *= 0.0
         self.old_u *= 0.0
         self.d *= 0.0
+
+        # and the optimizer's own state, including the `converged` latch
+        self.optimizer.reset()
 
         if self.mode == "bfgs":
             self.invhessian[:] = np.eye(
@@ -145,8 +150,10 @@ class GeopMotion(Motion):
             self.tr = self.initial_values["tr_trm"]
         # lbfgs
         elif self.mode == "lbfgs":
-            self.corrections *= 0.0
-            self.scale *= 0.0
+            # only the history, not corrections/scale: those are options (how
+            # many corrections to keep, which scaling to use), not accumulated
+            # state. Zeroing them also turned these ints into floats, which
+            # then failed to re-parse from a checkpoint.
             self.qlist *= 0.0
             self.glist *= 0.0
 
@@ -303,6 +310,17 @@ class DummyOptimizer:
     def step(self, step=None):
         """Dummy simulation time step which does nothing."""
         pass
+
+    def reset(self):
+        """Forgets that a previous minimization ever converged.
+
+        `converged` is a latch: exitstep() only ever sets it True. Anything that
+        runs the same optimizer for several independent minimizations (the KMC
+        driver, the RPQA smotion) has to clear it, or every relaxation after the
+        first is a no-op. Subclasses with per-bead or line-search state of their
+        own extend this.
+        """
+        self.converged = False
 
     def bind(self, geop):
         """
@@ -1052,6 +1070,17 @@ class CGRPOptimizer(DummyOptimizer):
         self.gm.bind(self)
         self.ls_options = geop.ls_options
         self.big_step = geop.big_step
+        self.reset()
+
+    def reset(self):
+        """Clears the per-bead state on top of the `converged` latch.
+
+        old_u_beads is the sentinel for "first iteration" (this optimizer keys
+        on it rather than on step == 0), alam is the adapted per-bead trial
+        step, and active is the converged-bead mask -- all three are latched
+        across a minimization and would otherwise make a second one a no-op.
+        """
+        super(CGRPOptimizer, self).reset()
         self.old_u_beads = None
         # per-bead trial step, seeded from ls_options and adapted from there
         self.alam = np.full(self.beads.nbeads, self.ls_options["step"], dtype=float)
