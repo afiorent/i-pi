@@ -1007,16 +1007,29 @@ class CGOptimizer(DummyOptimizer):
 class CGRPOptimizer(DummyOptimizer):
     """Conjugate gradient, Polak-Ribiere, treating each bead as an
     independent structure (no ring-polymer spring coupling). Unlike
-    CGOptimizer, each bead gets its own search direction, step length and
-    convergence check, so a bead close to its own minimum no longer has to
-    wait for slower beads to also converge before it stops moving. All
-    still-changing beads' force evaluations remain batched into a single
-    call per iteration.
+    CGOptimizer, which flattens all beads into one vector and so uses a
+    single global direction and step length, each bead here gets its own CG
+    direction and its own line-search step, while all beads' force
+    evaluations stay batched into a single call per line-search iteration.
+
+    The per-bead trial step is *adaptive*: it is carried across steps and
+    doubled whenever Armijo accepts on the first try, otherwise it inherits
+    whatever the backtracking accepted. Without this the search direction is
+    a unit vector and the trial step is a fixed constant, so a step that is
+    always accepted never grows and the optimizer crawls at
+    ls_options["step"] bohr per iteration.
 
     This is an experimental mode (mode="cg_rp"), kept separate from "cg" so
     the two can be compared directly; it does not support checkpoint restart
-    of the per-bead previous potential (recomputed fresh on (re)start).
+    of the per-bead previous potential or trial step (both are recomputed
+    fresh on (re)start).
     """
+
+    # trial-step growth per accepted-on-first-try iteration, and the floor
+    # it is never allowed to collapse below (so a bead that has to backtrack
+    # hard can still recover within a few steps)
+    ls_growth = 2.0
+    ls_floor = 1.0e-8
 
     def bind(self, geop):
         # call bind function from DummyOptimizer
@@ -1025,8 +1038,9 @@ class CGRPOptimizer(DummyOptimizer):
         self.gm.bind(self)
         self.ls_options = geop.ls_options
         self.big_step = geop.big_step
-        self.active = np.ones(self.beads.nbeads, dtype=bool)
         self.old_u_beads = None
+        # per-bead trial step, seeded from ls_options and adapted from there
+        self.alam = np.full(self.beads.nbeads, self.ls_options["step"], dtype=float)
 
     def step(self, step=None):
         """Does one simulation time step: one Polak-Ribiere CG iteration,
@@ -1049,32 +1063,38 @@ class CGRPOptimizer(DummyOptimizer):
                 0.0, np.divide(num, den, out=np.zeros_like(num), where=den > 0)
             )
             dq1 = gradf1 + beta[:, None] * dq0
+            # Polak-Ribiere with beta>=0 usually gives a descent direction,
+            # but not always; fall back to steepest descent for any bead
+            # whose CG direction points uphill, which no step length fixes.
+            uphill = np.einsum("bi,bi->b", dq1, gradf1) <= 0.0
+            if np.any(uphill):
+                dq1[uphill] = gradf1[uphill]
+                info(
+                    " @GEOP: reset %d bead(s) to SD direction" % np.sum(uphill),
+                    verbosity.debug,
+                )
             info(" @GEOP: Determined CG direction", verbosity.debug)
 
         # Store force and direction for next CG step
         self.d[:] = dq1
         self.old_f[:] = gradf1
 
-        # Per-bead unit direction; frozen (converged) beads get a zero
-        # direction so the batched line search accepts them unchanged.
+        # Per-bead unit direction, so that the trial step in alam is directly
+        # a displacement in bohr and can be compared against big_step.
         norms = np.linalg.norm(dq1, axis=1, keepdims=True)
-        dq1_unit = np.divide(
-            dq1, norms, out=np.zeros_like(dq1), where=norms > 1e-30
-        )
+        dq1_unit = np.divide(dq1, norms, out=np.zeros_like(dq1), where=norms > 1e-30)
 
         if len(self.fixatoms_dof) > 0:
             for dqb in dq1_unit:
                 dqb[self.fixatoms_dof] = 0.0
-
-        dq1_unit[~self.active] = 0.0
 
         x0 = dstrip(self.beads.q)[:, self.gm.fixatoms_mask]
         d0 = dq1_unit[:, self.gm.fixatoms_mask]
         f0 = self.old_u_beads
         df0 = -dstrip(self.forces.f)[:, self.gm.fixatoms_mask]
 
-        # Do one CG iteration per active bead; return positions and energies
-        x_new, f_new, g_new = min_approx_batch(
+        # One CG iteration per bead, each with its own adapted trial step
+        x_new, f_new, g_new, alam_used, ntrial = min_approx_batch(
             self.gm,
             x0,
             (f0, df0),
@@ -1082,10 +1102,19 @@ class CGRPOptimizer(DummyOptimizer):
             self.big_step,
             self.ls_options["tolerance"] * self.tolerances["energy"],
             self.ls_options["iter"],
-            init_alam=self.ls_options["step"],
+            init_alam=self.alam,
         )
         info("   Number of force calls: %d" % (self.gm.fcount))
         self.gm.fcount = 0
+
+        # Adapt the per-bead trial step for the next iteration: reward a step
+        # that was accepted immediately (it may have been too timid), and
+        # otherwise carry over whatever the backtracking settled on. Beads
+        # that made no progress at all (alam_used == 0) shrink instead.
+        accepted_first = (ntrial == 1) & (alam_used > 0.0)
+        next_alam = np.where(alam_used > 0.0, alam_used, 0.1 * self.alam)
+        next_alam[accepted_first] *= self.ls_growth
+        self.alam = np.clip(next_alam, self.ls_floor, self.big_step)
 
         # Update positions and forces
         self.beads.q = self.gm.dbeads.q
@@ -1093,35 +1122,27 @@ class CGRPOptimizer(DummyOptimizer):
             self.gm.dforces
         )  # This forces the update of the forces
 
-        # Per-bead convergence check: freeze beads that have met all three
-        # tolerances (correctly normalized per bead, unlike the shared
-        # exitstep() used by the other modes).
+        # Per-bead convergence check, correctly normalized per bead unlike the
+        # shared exitstep() used by the other modes. Beads are *not* frozen
+        # once they individually pass: every fdf() call re-evaluates the whole
+        # batch anyway (taint in the depend graph is not bead-resolved, so
+        # holding a bead still saves no force evaluations), and requiring all
+        # beads to pass simultaneously avoids latching a bead as converged
+        # when a later iteration has moved it again.
         d_x = np.absolute(x_new - x0)
         fmax = np.amax(np.absolute(g_new), axis=1)
         de = np.absolute(f_new - f0) / self.beads.natoms
-        newly_converged = self.active & (
+        bead_converged = (
             (de <= self.tolerances["energy"])
             & (fmax <= self.tolerances["force"])
             & (np.amax(d_x, axis=1) <= self.tolerances["position"])
         )
-        for k in np.where(newly_converged)[0]:
-            info(" @GEOP: bead %d converged" % k, verbosity.medium)
-        self.active[newly_converged] = False
         self.old_u_beads[:] = f_new
-
-        # Note: unlike SDOptimizer/CGOptimizer, ls_options["step"] is *not*
-        # adaptively shrunk from the achieved displacement here. That
-        # heuristic assumes min_brent's full 1D minimization (so the
-        # displacement reflects the natural step scale); min_approx_batch's
-        # Armijo backtracking instead accepts on the first sufficient-decrease
-        # trial, so the achieved displacement is a coarse lower bound, not an
-        # estimate of the ideal step -- shrinking towards it every iteration
-        # causes the initial trial step to collapse geometrically towards
-        # zero, stalling far from the true minimum.
 
         self.qtime += time.time()
         info(
-            "   %d/%d beads converged" % (np.sum(~self.active), self.beads.nbeads),
+            "   %d/%d beads within tolerance, max|f| %e, max step %e"
+            % (np.sum(bead_converged), self.beads.nbeads, np.amax(fmax), np.amax(d_x)),
             verbosity.medium,
         )
-        self.converged = not self.active.any()
+        self.converged = bool(np.all(bead_converged))
