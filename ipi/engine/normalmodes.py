@@ -948,6 +948,26 @@ class NormalModes:
             # mode basis, so these propagators cannot express it; use
             # <normal_modes propagator='bab'>, which integrates the springs in
             # Cartesian coordinates and can simply skip the frozen rows.
+            #
+            # There is an exact route, should this ever be worth implementing.
+            # Cutting the ring at the frozen bead j leaves an open chain of
+            # nbeads-1 beads with *both ends clamped* at q_j. In terms of
+            # u_k = q_k - q_j (k != j) the spring potential is the fixed-fixed
+            # tridiagonal chain
+            #     V = (m wn^2 / 2) [ u_+^2 + sum_k (u_{k+1} - u_k)^2 + u_-^2 ]
+            # whose eigenvalues are 4 sin^2(k pi / 2P), i.e. frequencies
+            #     w_k = 2 wn sin(k pi / 2P),   k = 1 ... P-1
+            # which is exactly nmtransform.o_nm_eva(P)[1:], the open-path
+            # spectrum minus its zero mode. Only the transform differs: it is a
+            # DST-I of length P-1, built like nmtransform.mk_o_nm_matrix and
+            # applied the same matrix-multiply way the open paths already are.
+            # The catches are that the clamped chain has no zero mode, so
+            # qcstep would have to be skipped entirely (the centroid stops being
+            # a propagatable degree of freedom); the transform acts on u, so q_j
+            # enters as an offset restored after the back-transform; it requires
+            # the same bead to be frozen for every atom; and kin, kstress,
+            # dynm3 and any normal-mode thermostat are all defined against the
+            # ring modes and would need the clamped variant too.
             if self.activebeads_mask is not None and not np.all(self.activebeads_mask):
                 raise NotImplementedError(
                     "Frozen beads (<fixbeads>) are only supported with the "
