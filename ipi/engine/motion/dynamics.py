@@ -14,6 +14,7 @@ import numpy as np
 
 from ipi.engine.motion import Motion
 from ipi.utils.depend import *
+from ipi.engine.normalmodes import active_beads_mask
 from ipi.engine.thermostats import Thermostat
 from ipi.engine.barostats import Barostat, BaroRGB
 from ipi.utils.messages import warning, verbosity
@@ -53,7 +54,7 @@ class Dynamics(Motion):
         barostat=None,
         fixcom=False,
         fixatoms_dof=None,
-        fixbeads_dof=None,
+        fixbeads=None,
         nmts=None,
         efield=None,
         bec=None,
@@ -68,7 +69,7 @@ class Dynamics(Motion):
         """
 
         super(Dynamics, self).__init__(
-            fixcom=fixcom, fixatoms_dof=fixatoms_dof, fixbeads_dof=fixbeads_dof
+            fixcom=fixcom, fixatoms_dof=fixatoms_dof, fixbeads=fixbeads
         )
 
         # initialize time step. this is the main time step that covers a full time step
@@ -116,24 +117,21 @@ class Dynamics(Motion):
         # splitting mode for the integrators
         self._splitting = depend_value(name="splitting", value=splitting)
 
-        # constraints
-        self.fixcom = fixcom
-        if fixatoms_dof is None:
-            self.fixatoms_dof = np.zeros(0, int)
-        else:
-            self.fixatoms_dof = fixatoms_dof
-
-        if fixbeads_dof is None:
-            self.fixbeads_dof = np.zeros(0, int)
-        else:
-            self.fixbeads_dof = fixbeads_dof
-
     def get_fixdof(self):
         """Calculate the number of fixed degrees of freedom, required for
         temperature and pressure calculations.
         """
 
-        fixdof = len(self.fixatoms_dof) * self.beads.nbeads
+        if len(self.fixbeads) > 0:
+            # the frozen set is the union of the fixed beads and the fixed
+            # atomic degrees of freedom, so it has to be counted on the mask
+            # rather than summed term by term
+            mask = active_beads_mask(
+                self.beads.nbeads, self.beads.natoms, self.fixatoms_dof, self.fixbeads
+            )
+            fixdof = int(np.sum(~mask))
+        else:
+            fixdof = len(self.fixatoms_dof) * self.beads.nbeads
         if self.fixcom:
             fixdof += 3
         return fixdof
@@ -295,7 +293,7 @@ class DummyIntegrator:
         self.barostat = motion.barostat
         self.fixcom = motion.fixcom
         self.fixatoms_dof = motion.fixatoms_dof
-        self.fixbeads_dof = motion.fixbeads_dof
+        self.fixbeads = motion.fixbeads
         self.enstype = motion.enstype
 
         # no need to dpipe these are really just references
@@ -317,25 +315,12 @@ class DummyIntegrator:
         else:
             self.activeatoms_mask = False
 
-        # check whether fixed indexes make sense for beads
-        if len(self.fixbeads_dof) > 0:
-            # Create flattened indices for all beads and atoms
-            total_dof = self.beads.nbeads * 3 * self.beads.natoms
-            if np.any(self.fixbeads_dof >= total_dof):
-                raise ValueError(
-                    "Constrained bead indexes are out of bounds wrt. number of beads and atoms."
-                )
-
-            # Create mask assuming fixbeads_dof is flattened, then reshape
-            full_indices_flat = np.arange(total_dof)
-            activebeads_mask_flat = ~np.isin(full_indices_flat, self.fixbeads_dof)
-            self.activebeads_mask = activebeads_mask_flat.reshape(
-                self.beads.nbeads, 3 * self.beads.natoms
-            )
-            ### For debug purposes only
-            # print('! active beads mask', activebeads_mask_flat)
-        else:
-            self.activebeads_mask = False
+        # mask of the freely-moving (bead, dof) pairs when whole beads are
+        # frozen, None otherwise. It already includes the fixed atomic degrees
+        # of freedom, so it supersedes activeatoms_mask wherever it is set.
+        self.activebeads_mask = active_beads_mask(
+            self.beads.nbeads, self.beads.natoms, self.fixatoms_dof, self.fixbeads
+        )
         # total number of iteration in the inner-most MTS loop
         self._inmts = depend_value(name="inmts", func=lambda: np.prod(self.nmts))
         self._nmtslevels = depend_value(name="nmtslevels", func=lambda: len(self.nmts))
@@ -416,31 +401,26 @@ class DummyIntegrator:
 
             self.ensemble.eens += np.sum(vcom**2) * 0.5 * Mnb  # COM kinetic energy.
 
+        if self.activebeads_mask is not None:
+            # Whole beads are frozen, so the constraint is not diagonal in the
+            # normal mode basis and has to be applied in the bead
+            # representation. The mask already covers fixatoms_dof, so this
+            # single branch handles both kinds of constraint.
+            frozen = ~self.activebeads_mask
+            m3 = dstrip(beads.m3)
+            p = dstrip(beads.p)
+
+            self.ensemble.eens += 0.5 * np.sum(p[frozen] ** 2 / m3[frozen])
+            beads.p[frozen] = 0.0
+
         # Here we remove momenta in the nm basis because it is equivalent to cartesian but ensures we treat CMD setups consistently.
-        if len(self.fixatoms_dof) > 0:
+        elif len(self.fixatoms_dof) > 0:
             pnm = dstrip(self.nm.pnm)
             dynm3 = dstrip(self.nm.dynm3)
             self.ensemble.eens += 0.5 * np.sum(
                 pnm[:, self.fixatoms_dof] ** 2 / dynm3[:, self.fixatoms_dof]
             )
             self.nm.pnm[:, self.fixatoms_dof] = 0.0
-
-        if len(self.fixbeads_dof) > 0:
-            m3 = dstrip(beads.m3)
-            p = dstrip(beads.p)
-
-            # Extract bead and atom indices from flattened DOF indices
-            ibead_indices = self.fixbeads_dof // (3 * self.beads.natoms)
-            jatom_dof_indices = self.fixbeads_dof % (3 * self.beads.natoms)
-
-            # Add kinetic energy contribution for fixed bead-atom pairs
-            self.ensemble.eens += 0.5 * np.sum(
-                p[ibead_indices, jatom_dof_indices] ** 2
-                / m3[ibead_indices, jatom_dof_indices]
-            )
-
-            # Zero out momenta for fixed bead-atom pairs
-            beads.p[ibead_indices, jatom_dof_indices] = 0.0
 
 
 dproperties(
@@ -470,16 +450,9 @@ class NVEIntegrator(DummyIntegrator):
         """Velocity Verlet momentum propagator."""
 
         # halfdt/alpha
-        if len(self.fixatoms_dof) > 0:
-            self.beads.p[:, self.activeatoms_mask] += (
-                dstrip(self.forces.mts_forces[level].f)[:, self.activeatoms_mask]
-                * self.pdt[level]
-            )
-            if level == 0 and self.ensemble.has_bias:  # adds bias in the outer loop
-                self.beads.p[:, self.activeatoms_mask] += (
-                    dstrip(self.bias.f)[:, self.activeatoms_mask] * self.pdt[level]
-                )
-        elif len(self.fixbeads_dof) > 0:
+        # the bead mask, when set, already contains the fixed atomic degrees of
+        # freedom, so it is checked first
+        if self.activebeads_mask is not None:
             self.beads.p[self.activebeads_mask] += (
                 dstrip(self.forces.mts_forces[level].f)[self.activebeads_mask]
                 * self.pdt[level]
@@ -487,6 +460,15 @@ class NVEIntegrator(DummyIntegrator):
             if level == 0 and self.ensemble.has_bias:  # adds bias in the outer loop
                 self.beads.p[self.activebeads_mask] += (
                     dstrip(self.bias.f)[self.activebeads_mask] * self.pdt[level]
+                )
+        elif len(self.fixatoms_dof) > 0:
+            self.beads.p[:, self.activeatoms_mask] += (
+                dstrip(self.forces.mts_forces[level].f)[:, self.activeatoms_mask]
+                * self.pdt[level]
+            )
+            if level == 0 and self.ensemble.has_bias:  # adds bias in the outer loop
+                self.beads.p[:, self.activeatoms_mask] += (
+                    dstrip(self.bias.f)[:, self.activeatoms_mask] * self.pdt[level]
                 )
         else:
             self.beads.p[:] += dstrip(self.forces.mts_forces[level].f) * self.pdt[level]

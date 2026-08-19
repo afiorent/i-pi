@@ -41,15 +41,13 @@ class MultiMotion(Motion):
         for m in self.mlist:
             self.fixcom = self.fixcom and m.fixcom
 
-        # Add fixbeads_dof handling
-        self.fixbeads_dof = set(self.mlist[0].fixbeads_dof)
-        # for m in self.mlist:
-        #     self.fixbeads_dof = self.fixbeads_dof.intersection(m.fixbeads_dof)
-        self.fixbeads_dof = np.array(list(self.fixbeads_dof), dtype=int)
-        print(
-            "!MultiMotion fixing the following bead degrees of freedom:",
-            self.fixbeads_dof,
-        )
+        # A bead frozen by any of the sub-motions is frozen for the multi-motion
+        # as a whole: unlike fixatoms_dof, which each sub-motion applies to its
+        # own step, freezing a bead is a property of the ring polymer that the
+        # normal modes object has to know about before any of them runs.
+        self.fixbeads = np.unique(
+            np.concatenate([np.zeros(0, int)] + [m.fixbeads for m in self.mlist])
+        ).astype(int)
 
     def get_totdt(self):
         dt = 0.0

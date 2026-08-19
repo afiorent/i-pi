@@ -153,8 +153,9 @@ def assemble_init_file(
     return N, init_name, frames
 
 
-def build_fixbeads(N: int, best_bead: int):
-    return (N * best_bead + np.arange(N)).tolist()
+def build_fixbeads(best_bead: int):
+    # <fixbeads> takes bead indices: the whole bead is frozen, all its atoms
+    return [int(best_bead)]
 
 
 def build_hbar2_pair(i: int, N_iteration: int, hbar2_start: float, hbar2_end: float):
@@ -217,7 +218,7 @@ def main():
     print(f"Wrote init file: {init_path} (N_atoms={N})")
 
     # 3) compute fixbeads
-    fixbeads = build_fixbeads(N, best_bead)
+    fixbeads = build_fixbeads(best_bead)
 
     # 4) pick hbar2 pair
     hbar2_0, hbar2_1 = build_hbar2_pair(
