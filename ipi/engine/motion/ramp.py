@@ -118,8 +118,8 @@ class PressureRamp(Motion):
 class LambdaRamp(Motion):
     """Lambdakin ramp (quench/heat).
 
-    Attributes:
-##TODO controlla sostituzioni con temp to lambda
+        Attributes:
+    ##TODO controlla sostituzioni con temp to lambda
     """
 
     def __init__(
@@ -158,16 +158,20 @@ class LambdaRamp(Motion):
             self.ensemble.lambdakin = self.lambda_end
         else:
             if self.logscale:
-                self.ensemble.lambdakin = self.lambda_start * (self.lambda_end / self.lambda_start) ** (
-                    self.current_step * 1.0 / self.total_steps
-                )
+                self.ensemble.lambdakin = self.lambda_start * (
+                    self.lambda_end / self.lambda_start
+                ) ** (self.current_step * 1.0 / self.total_steps)
             elif self.sqrtscale:
                 self.ensemble.lambdakin = (
                     self.lambda_start**0.5
-                    + self.current_step * (self.lambda_end**0.5 - self.lambda_start**0.5) / self.total_steps
-                )**2
+                    + self.current_step
+                    * (self.lambda_end**0.5 - self.lambda_start**0.5)
+                    / self.total_steps
+                ) ** 2
             else:
                 self.ensemble.lambdakin = (
                     self.lambda_start
-                    + self.current_step * (self.lambda_end - self.lambda_start) / self.total_steps
+                    + self.current_step
+                    * (self.lambda_end - self.lambda_start)
+                    / self.total_steps
                 )

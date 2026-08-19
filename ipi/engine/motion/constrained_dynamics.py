@@ -78,7 +78,9 @@ class ConstrainedDynamics(Dynamics):
                 motion will be constrained or not. Defaults to False.
         """
 
-        super(Dynamics, self).__init__(fixcom=fixcom, fixatoms=fixatoms,fixbeads=fixbeads)
+        super(Dynamics, self).__init__(
+            fixcom=fixcom, fixatoms=fixatoms, fixbeads=fixbeads
+        )
         self._dt = depend_value(name="dt", value=timestep)
 
         if thermostat is None:

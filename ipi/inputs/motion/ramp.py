@@ -25,7 +25,7 @@ from ipi.engine.motion import *
 from ipi.utils.inputvalue import *
 from ipi.utils.units import *
 
-__all__ = ["InputTemperatureRamp", "InputPressureRamp","InputLambdaRamp"]
+__all__ = ["InputTemperatureRamp", "InputPressureRamp", "InputLambdaRamp"]
 
 
 class InputTemperatureRamp(InputDictionary):

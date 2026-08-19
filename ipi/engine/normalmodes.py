@@ -187,10 +187,14 @@ class NormalModes:
             # Create mask assuming fixbeads_dof is flattened, then reshape
             full_indices_flat = np.arange(total_dof)
             activebeads_mask_flat = ~np.isin(full_indices_flat, motion.fixbeads_dof)
-            self.activebeads_mask = activebeads_mask_flat.reshape(self.nbeads, 3 * self.natoms)
+            self.activebeads_mask = activebeads_mask_flat.reshape(
+                self.nbeads, 3 * self.natoms
+            )
 
             # Debug print
-            print(f"DEBUG: Generated activebeads_mask from fixbeads_dof: {motion.fixbeads_dof}")
+            print(
+                f"DEBUG: Generated activebeads_mask from fixbeads_dof: {motion.fixbeads_dof}"
+            )
             print(f"DEBUG: activebeads_mask shape: {self.activebeads_mask.shape}")
             print(f"DEBUG: Number of active DOFs: {np.sum(self.activebeads_mask)}")
         else:
@@ -276,7 +280,12 @@ class NormalModes:
 
         # create path-frequencies related properties
         self._omegan = depend_value(
-            name="omegan", func=self.get_omegan, dependencies=[self.ensemble._temp,self.ensemble._lambdakin] #now omegan it depends on both TemperatureRamp and LambdaRamp
+            name="omegan",
+            func=self.get_omegan,
+            dependencies=[
+                self.ensemble._temp,
+                self.ensemble._lambdakin,
+            ],  # now omegan it depends on both TemperatureRamp and LambdaRamp
         )
         self._omegan2 = depend_value(
             name="omegan2", func=self.get_omegan2, dependencies=[self._omegan]
@@ -462,7 +471,11 @@ class NormalModes:
         """
         # print('!lambda kin from normal mode',self.ensemble.lambdakin)
         return (
-            self.ensemble.temp * self.nbeads * units.Constants.kb / units.Constants.hbar/np.sqrt(self.ensemble.lambdakin)
+            self.ensemble.temp
+            * self.nbeads
+            * units.Constants.kb
+            / units.Constants.hbar
+            / np.sqrt(self.ensemble.lambdakin)
         )
 
     def get_omegan2(self):
@@ -838,12 +851,18 @@ class NormalModes:
             if self.activebeads_mask is not None:
                 # Apply dynamics only to active beads
                 for j in range(0, self.nmts):
-                    self.beads.p[self.activebeads_mask] += 0.5 * dt * self.fspring[self.activebeads_mask]
-                    self.beads.q[self.activebeads_mask] += dt * (self.beads.p / dstrip(self.beads.m3))[
-                        self.activebeads_mask]
+                    self.beads.p[self.activebeads_mask] += (
+                        0.5 * dt * self.fspring[self.activebeads_mask]
+                    )
+                    self.beads.q[self.activebeads_mask] += (
+                        dt
+                        * (self.beads.p / dstrip(self.beads.m3))[self.activebeads_mask]
+                    )
                     # The depend machinery will take care of automatically calculating
                     # the forces at the updated positions.
-                    self.beads.p[self.activebeads_mask] += 0.5 * dt * self.fspring[self.activebeads_mask]
+                    self.beads.p[self.activebeads_mask] += (
+                        0.5 * dt * self.fspring[self.activebeads_mask]
+                    )
             else:
                 for j in range(0, self.nmts):
                     self.beads.p += 0.5 * dt * self.fspring

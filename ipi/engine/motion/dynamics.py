@@ -67,7 +67,9 @@ class Dynamics(Motion):
                 motion will be constrained or not. Defaults to False.
         """
 
-        super(Dynamics, self).__init__(fixcom=fixcom, fixatoms_dof=fixatoms_dof,fixbeads_dof=fixbeads_dof)
+        super(Dynamics, self).__init__(
+            fixcom=fixcom, fixatoms_dof=fixatoms_dof, fixbeads_dof=fixbeads_dof
+        )
 
         # initialize time step. this is the main time step that covers a full time step
         self._dt = depend_value(name="dt", value=timestep)
@@ -327,7 +329,9 @@ class DummyIntegrator:
             # Create mask assuming fixbeads_dof is flattened, then reshape
             full_indices_flat = np.arange(total_dof)
             activebeads_mask_flat = ~np.isin(full_indices_flat, self.fixbeads_dof)
-            self.activebeads_mask = activebeads_mask_flat.reshape(self.beads.nbeads, 3 * self.beads.natoms)
+            self.activebeads_mask = activebeads_mask_flat.reshape(
+                self.beads.nbeads, 3 * self.beads.natoms
+            )
             ### For debug purposes only
             # print('! active beads mask', activebeads_mask_flat)
         else:
@@ -427,15 +431,17 @@ class DummyIntegrator:
 
             # Extract bead and atom indices from flattened DOF indices
             ibead_indices = self.fixbeads_dof // (3 * self.beads.natoms)
-            jatom_dof_indices = (self.fixbeads_dof % (3 * self.beads.natoms))
+            jatom_dof_indices = self.fixbeads_dof % (3 * self.beads.natoms)
 
             # Add kinetic energy contribution for fixed bead-atom pairs
             self.ensemble.eens += 0.5 * np.sum(
-                p[ibead_indices, jatom_dof_indices] ** 2 / m3[ibead_indices, jatom_dof_indices]
+                p[ibead_indices, jatom_dof_indices] ** 2
+                / m3[ibead_indices, jatom_dof_indices]
             )
 
             # Zero out momenta for fixed bead-atom pairs
             beads.p[ibead_indices, jatom_dof_indices] = 0.0
+
 
 dproperties(
     DummyIntegrator,
