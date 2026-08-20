@@ -18,6 +18,7 @@ from ipi.engine.normalmodes import active_beads_mask
 from ipi.utils import io
 from ipi.utils.depend import dstrip
 from ipi.utils.messages import verbosity, info, warning
+from ipi.utils.units import unit_to_user
 
 __all__ = ["RPQA"]
 
@@ -168,7 +169,7 @@ class RPQA(Smotion):
         self.pf = self.output_maker.get_output(self.pinfile)
         if self.output_maker.f_start:  # a fresh run, not a resumed one
             self.pf.write(
-                "#     step  sys  bead        potential           spread"
+                "#     step  sys  bead   potential/eV        spread/eV"
                 "   relaxsteps      lambdaqkin\n"
             )
             self.pf.force_flush()
@@ -207,8 +208,8 @@ class RPQA(Smotion):
             self.ifile.write(
                 "# RPQA inherent structures: the relaxed configuration of every bead at\n"
                 "# each pinning event. Positions are in the companion .pos_*.xyz files,\n"
-                "# one frame per event; potentials below are in atomic units.\n"
-                "#     step  sys  pinned   potential of bead 0, 1, ... in order\n"
+                "# one frame per event.\n"
+                "#     step  sys  pinned   potential/eV of bead 0, 1, ... in order\n"
             )
             self.ifile.force_flush()
 
@@ -220,6 +221,7 @@ class RPQA(Smotion):
         """
 
         s = self.syslist[isys]
+        pots_ev = [unit_to_user("energy", "electronvolt", p) for p in pots]
 
         for b in range(s.beads.nbeads):
             io.print_file(
@@ -230,8 +232,8 @@ class RPQA(Smotion):
                 # the trailing space matters: print_file appends the key and
                 # units to whatever it is given
                 title=(
-                    "RPQA inherent  Step:  %10d  Bead:   %5d  Potential: %15.8e%s "
-                    % (step, b, pots[b], "  PINNED" if b == k else "")
+                    "RPQA inherent  Step:  %10d  Bead:   %5d  Potential: %15.8e eV%s "
+                    % (step, b, pots_ev[b], "  PINNED" if b == k else "")
                 ),
                 key="positions",
                 dimension="length",
@@ -240,7 +242,7 @@ class RPQA(Smotion):
 
         self.ifile.write(
             "% 10d % 5d % 7d" % (step, isys, k)
-            + "".join(" %15.8e" % p for p in pots)
+            + "".join(" %15.8e" % p for p in pots_ev)
             + "\n"
         )
         self.ifile.force_flush()
@@ -340,8 +342,8 @@ class RPQA(Smotion):
                     step,
                     isys,
                     k,
-                    pots[k],
-                    pots.max() - pots.min(),
+                    unit_to_user("energy", "electronvolt", pots[k]),
+                    unit_to_user("energy", "electronvolt", pots.max() - pots.min()),
                     nrelax,
                     s.ensemble.lambdaqkin,
                 )
