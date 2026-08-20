@@ -15,6 +15,7 @@ import numpy as np
 from ipi.engine.smotion import Smotion
 from ipi.engine.motion import Dynamics, GeopMotion
 from ipi.engine.normalmodes import active_beads_mask
+from ipi.utils import io
 from ipi.utils.depend import dstrip
 from ipi.utils.messages import verbosity, info, warning
 
@@ -53,6 +54,7 @@ class RPQA(Smotion):
             it is the equilibration ("delocalization") stage.
         max_relax_steps: Safety cap on the optimizer iterations per event.
         pinfile: Where the pinning history is logged.
+        inherent_data: Whether to save the inherent structures and their energies.
         geop: One owned GeopMotion per system, used for the relaxations.
         pinned_bead: The currently pinned replica of each system, -1 if none.
     """
@@ -63,6 +65,7 @@ class RPQA(Smotion):
         start_step=-1,
         max_relax_steps=5000,
         pinfile="rpqa_pin",
+        inherent_data=False,
         optimizer=None,
         pinned_bead=None,
     ):
@@ -74,6 +77,8 @@ class RPQA(Smotion):
               pinning_interval", i.e. equilibrate for as long as one interval.
            max_relax_steps: Maximum optimizer iterations per pinning event.
            pinfile: Name of the pinning log.
+           inherent_data: If True, save the relaxed configuration of every bead
+              at each pinning event, along with its potential energy.
            optimizer: A dict of GeopMotion options, as produced by InputGeop.
            pinned_bead: Restart state -- the pinned replica of each system.
         """
@@ -91,6 +96,7 @@ class RPQA(Smotion):
 
         self.max_relax_steps = int(max_relax_steps)
         self.pinfile = pinfile
+        self.inherent_data = bool(inherent_data)
 
         if optimizer is None:
             optimizer = {}
@@ -167,6 +173,78 @@ class RPQA(Smotion):
             )
             self.pf.force_flush()
 
+        self._bind_inherent()
+
+    def _bind_inherent(self):
+        """Opens the inherent-structure outputs, if they were asked for.
+
+        One xyz per bead, appended once per pinning event, plus a table of the
+        relaxed energies. get_output picks "w" or "a" from the restart state,
+        so a resumed run keeps adding to the existing files.
+        """
+
+        self.ifile = None
+        self.ipos = []
+        if not self.inherent_data:
+            return
+
+        # bead index is zero-padded the same way trajectory outputs do it
+        tagged = len(self.syslist) > 1
+        for isys, s in enumerate(self.syslist):
+            digits = int(1 + np.floor(np.log(s.beads.nbeads) / np.log(10)))
+            tag = ("_s%d" % isys) if tagged else ""
+            self.ipos.append(
+                [
+                    self.output_maker.get_output(
+                        "rpqa_inherent%s.pos_%0*d.xyz" % (tag, digits, b)
+                    )
+                    for b in range(s.beads.nbeads)
+                ]
+            )
+
+        self.ifile = self.output_maker.get_output("rpqa_inherent.out")
+        if self.output_maker.f_start:
+            self.ifile.write(
+                "# RPQA inherent structures: the relaxed configuration of every bead at\n"
+                "# each pinning event. Positions are in the companion .pos_*.xyz files,\n"
+                "# one frame per event; potentials below are in atomic units.\n"
+                "#     step  sys  pinned   potential of bead 0, 1, ... in order\n"
+            )
+            self.ifile.force_flush()
+
+    def _write_inherent(self, isys, step, pots, k):
+        """Saves the relaxed structures and energies of one pinning event.
+
+        Must be called while the beads still hold the relaxed positions, i.e.
+        before the pre-relax configuration is put back.
+        """
+
+        s = self.syslist[isys]
+
+        for b in range(s.beads.nbeads):
+            io.print_file(
+                "xyz",
+                s.beads[b],
+                s.cell,
+                self.ipos[isys][b],
+                # the trailing space matters: print_file appends the key and
+                # units to whatever it is given
+                title=(
+                    "RPQA inherent  Step:  %10d  Bead:   %5d  Potential: %15.8e%s "
+                    % (step, b, pots[b], "  PINNED" if b == k else "")
+                ),
+                key="positions",
+                dimension="length",
+            )
+            self.ipos[isys][b].force_flush()
+
+        self.ifile.write(
+            "% 10d % 5d % 7d" % (step, isys, k)
+            + "".join(" %15.8e" % p for p in pots)
+            + "\n"
+        )
+        self.ifile.force_flush()
+
     def _pin(self, isys, k):
         """Freezes bead k of system isys, releasing whichever was frozen before."""
 
@@ -230,6 +308,10 @@ class RPQA(Smotion):
 
             pots = dstrip(s.forces.pots).copy()
             k = int(np.argmin(pots))
+
+            if self.inherent_data:
+                # while beads.q is still the relaxed configuration
+                self._write_inherent(isys, step, pots, k)
 
             # Only the best bead keeps its minimum. The others go back to where
             # the dynamics left them, so the ring polymer stays delocalised;

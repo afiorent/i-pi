@@ -71,6 +71,17 @@ class InputRPQA(InputDictionary):
                 "help": "File to keep track of which replica is pinned when.",
             },
         ),
+        "inherent_data": (
+            InputValue,
+            {
+                "dtype": bool,
+                "default": False,
+                "help": "Whether to save the inherent structures, i.e. the relaxed "
+                "configuration of every bead at each pinning event, together with its "
+                "potential energy. Writes rpqa_inherent.out (one row per event, one "
+                "column per bead) and rpqa_inherent.pos_*.xyz (one frame per event).",
+            },
+        ),
         "pinned_bead": (
             InputArray,
             {
@@ -101,6 +112,7 @@ class InputRPQA(InputDictionary):
         self.start_step.store(rpqa.start_step)
         self.max_relax_steps.store(rpqa.max_relax_steps)
         self.pinfile.store(rpqa.pinfile)
+        self.inherent_data.store(rpqa.inherent_data)
         self.pinned_bead.store(rpqa.pinned_bead)
         # the owned optimizers are per system and identically configured, so
         # the first one carries the options; before bind there is none yet
