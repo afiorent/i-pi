@@ -14,6 +14,8 @@ import numpy as np
 
 from ipi.engine.smotion import Smotion
 from ipi.engine.motion import Dynamics, GeopMotion
+from ipi.engine.barostats import Barostat
+from ipi.engine.thermostats import ThermoSVR
 from ipi.engine.normalmodes import active_beads_mask
 from ipi.utils import io
 from ipi.utils.depend import dstrip
@@ -148,6 +150,23 @@ class RPQA(Smotion):
                     "RPQA drives the annealing through the system's own "
                     "dynamics, but no <motion mode='dynamics'> was found."
                 )
+            # The number of frozen degrees of freedom changes at the first
+            # pinning event, but fixdof was handed to the thermostat and the
+            # barostat once, at bind, when nothing was pinned yet. Langevin
+            # ignores fixdof, so the common case is safe; the consumers that do
+            # not are refused rather than left quietly wrong.
+            if type(dyn.barostat) is not Barostat:
+                raise ValueError(
+                    "RPQA does not support a barostat: the barostat's dof count "
+                    "is fixed at bind time and cannot follow the pinning."
+                )
+            if isinstance(dyn.thermostat, ThermoSVR):
+                raise ValueError(
+                    "RPQA does not support the SVR thermostat: its ndof is "
+                    "fixed at bind time and cannot follow the pinning. Use "
+                    "<thermostat mode='langevin'>."
+                )
+
             self.dynamics.append(dyn)
 
             geop = GeopMotion(
@@ -266,6 +285,14 @@ class RPQA(Smotion):
         s.nm.activebeads_mask = mask
         dyn.integrator.fixbeads = dyn.fixbeads
         dyn.integrator.activebeads_mask = mask
+
+        # Properties reads fixbeads off system.motion, which for the usual
+        # <motion mode='multi'> input is the MultiMotion and not the Dynamics
+        # we just pinned. Without this the reported temperature is low by
+        # (frozen dof)/(total dof), since get_temp cannot compensate for a
+        # constraint it cannot see.
+        if s.motion is not dyn:
+            s.motion.fixbeads = dyn.fixbeads
 
         self.pinned_bead[isys] = k
 

@@ -15,6 +15,7 @@ from ipi.utils.units import Constants, unit_to_internal
 from ipi.utils.mathtools import logsumlog, h2abc_deg
 from ipi.utils.io.inputs import io_xml
 from ipi.engine.motion.driven_dynamics import DrivenDynamics
+from ipi.engine.normalmodes import active_beads_mask
 from ipi.utils.softexit import softexit
 
 __all__ = ["Properties", "Trajectories", "getkey", "getall", "help_latex", "help_rst"]
@@ -1162,7 +1163,26 @@ class Properties:
                     # non-centroid mode, no need to add KE for fixcom and constrained centroid
                     eff_number_fixed_dof = 0
 
-            if len(self.motion.fixatoms_dof) > 0:
+            # whole frozen beads (<fixbeads>) are not diagonal in the atom index,
+            # so they need the (nbeads, 3*natoms) mask rather than a per-atom
+            # flag vector. The mask also carries fixatoms_dof, so it supersedes
+            # the branch below whenever it exists.
+            beads_mask = active_beads_mask(
+                self.beads.nbeads,
+                self.beads.natoms,
+                self.motion.fixatoms_dof,
+                getattr(self.motion, "fixbeads", ()),
+            )
+
+            if beads_mask is not None:
+                dof_ids = np.concatenate(
+                    (atom_ids * 3, atom_ids * 3 + 1, atom_ids * 3 + 2)
+                )
+                # summing the mask already totals over the beads, so unlike the
+                # fixatoms-only branch this must not be scaled by eff_nbeads
+                eff_number_fixed_dof += np.sum(~beads_mask[:, dof_ids])
+
+            elif len(self.motion.fixatoms_dof) > 0:
                 # Note that fixatom should NOT be compatitable with fixcom!
                 flags = np.zeros(self.beads.natoms * 3)
                 flags[self.motion.fixatoms_dof] += 1  # mark all fixed atom dof as 1
