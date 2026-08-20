@@ -96,10 +96,15 @@ work rather than the initial guess. Across ten such structures the starting
 minima span -9.56 to -10.09 eV, and how deep the start is does not predict
 whether the run succeeds.
 
-## Compared with the scripted version
+## Why it is one run
 
-`../legacy_LJ_cluster/RPQA` implements the same method as a bash loop that
-restarts i-PI for every stage and shells out to `update_RPQA.py` in between.
-The two do the same work at the same cost in force evaluations; the smotion
-saves the repeated startup, keeps momenta across stages, and produces one
-trajectory and one restart file instead of a directory of fragments.
+RPQA was originally driven from a shell script that restarted i-PI for every
+stage -- relax, then a Python script to pick the replica to pin, then the
+annealing interval -- so a five-iteration run meant eleven i-PI startups and a
+directory full of per-stage fragments to stitch back together.
+
+Doing the same thing from inside the engine costs the same in force
+evaluations, since it runs the same dynamics and the same relaxations. What it
+saves is the repeated startup, and it keeps momenta across the pinning events
+instead of restarting each stage from rest. One trajectory, one RESTART that
+resumes anywhere.

@@ -1,9 +1,9 @@
 #!/bin/bash
 # RPQA on a 25-atom LJ cluster: one i-PI run, driven by the 'rpqa' smotion.
 #
-# Unlike the scripted loop in ../legacy_LJ_cluster/RPQA, i-PI is started once
-# and the relax/pick/pin logic runs inside the engine, so there is a single
-# continuous trajectory and a single RESTART covering the whole run.
+# i-PI is started once and the relax/pick/pin logic runs inside the engine, so
+# there is a single continuous trajectory and a single RESTART covering the
+# whole run.
 
 source ../../../../env.sh
 
