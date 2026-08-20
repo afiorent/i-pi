@@ -18,7 +18,9 @@
    - momenta carry through a pinning event, where the scripted version
      restarts each stage from an .xyz and so from zero velocities;
    - the annealing schedule is one global sqrt-linear ramp rather than five
-     per-iteration segments, which is the same trajectory of lambdaqkin.
+     per-iteration segments. It is not quite the same lambdaqkin trajectory:
+     QKinRamp counts from step 0, so it cannot hold lambda fixed through the
+     equilibration the way the scripted version does.
 -->
 <simulation mode="static" verbosity="medium">
   <output prefix='rpqa'>
@@ -68,7 +70,11 @@
         <qkin_ramp>
           <lambda_start> 16.0 </lambda_start>
           <lambda_end> 0.0001 </lambda_end>
-          <total_steps> 11000 </total_steps>
+          <!-- the step at which the anneal must be finished, i.e. the last
+               pinning event - not the length of the run. Ramping over the
+               full 11000 steps leaves lambdaqkin at ~0.002 at the end, with
+               the ring polymer still delocalised. -->
+          <total_steps> 9000 </total_steps>
           <logscale> False </logscale>
           <sqrtscale> True </sqrtscale>
         </qkin_ramp>
