@@ -1,0 +1,99 @@
+<!--
+  Ring-polymer quantum annealing (RPQA) of amorphous silicon, as a single i-PI
+  run driven by the 'rpqa' super-motion.
+
+  A. Fiorentino and N. Marzari, "Quantum annealing for materials",
+  arXiv:2606.03405 (2026)
+
+  Two things differ from the LJ cluster examples. The anneal ends at
+  lambdaqkin = 1, the physical value, rather than quenching towards zero: the
+  target is the real quantum system at 50 K, not a classical minimum. And it
+  starts far higher, at 1200, because the nuclear quantum effects scale as
+  lambdaqkin * hbar^2 / M and silicon is heavy - a value that delocalizes a
+  light nucleus does nothing here. The paper gives the rule of thumb for
+  choosing the range. See README.md.
+
+  Forces come from a NEP potential through an ASE socket client; start it with
+  ./run.sh, which needs pynep and ase in the environment.
+-->
+<simulation mode="static" verbosity="medium">
+  <output prefix='rpqa'>
+    <properties stride='250' filename='out'>  [ step, time{picosecond}, conserved{electronvolt}, temperature{kelvin}, kinetic_cv{electronvolt}, potential{electronvolt}, volume, lambdaqkin ] </properties>
+    <properties stride='250' filename='beadpot'>  [ step, bead_potentials{electronvolt} ] </properties>
+    <trajectory filename='pos' stride='2500'> positions </trajectory>
+    <trajectory filename='roc' stride='2500'> x_centroid </trajectory>
+    <checkpoint stride='2500'/>
+  </output>
+  <prng>
+    <seed>31415</seed>
+  </prng>
+  <!-- 2500 steps of delocalization + 4 intervals of 2500, at 2 fs = 5 ps each -->
+  <total_steps>12500</total_steps>
+  <ffsocket mode='unix' name='ase_driver' pbc='True'>
+    <address>rpqa_si</address>
+    <latency>0.0001</latency>
+  </ffsocket>
+  <system>
+    <!-- one frame per bead; the cell comes from the file's Lattice -->
+    <initialize nbeads='32'>
+      <file mode='ase'> structures/N16/nbeads_32/optimal_beads_0.xyz </file>
+      <velocities mode='thermal' units='kelvin'> 50 </velocities>
+    </initialize>
+    <forces>
+      <force forcefield='ase_driver'> </force>
+    </forces>
+    <ensemble>
+      <temperature units="kelvin"> 50 </temperature>
+      <lambdaqkin> 1200 </lambdaqkin>
+    </ensemble>
+    <!-- freezing a bead requires the Cartesian free-ring-polymer propagator -->
+    <normal_modes propagator='bab'>
+      <nmts> 20 </nmts>
+    </normal_modes>
+    <motion mode='multi'>
+      <motion mode='dynamics'>
+        <fixcom>False</fixcom>
+        <!-- no <fixbeads> here: the smotion chooses and sets it -->
+        <dynamics mode='nvt'>
+          <thermostat mode='langevin'>
+            <tau units='femtosecond'> 20 </tau>
+          </thermostat>
+          <timestep units='femtosecond'> 2.0 </timestep>
+        </dynamics>
+      </motion>
+      <motion mode='qkin_ramp'>
+        <qkin_ramp>
+          <lambda_start> 1200 </lambda_start>
+          <lambda_end> 300 </lambda_end>
+          <!-- the step the anneal must be finished by, i.e. the last pinning
+               event, not the length of the run -->
+          <total_steps> 10000 </total_steps>
+          <logscale> False </logscale>
+          <sqrtscale> True </sqrtscale>
+        </qkin_ramp>
+      </motion>
+    </motion>
+  </system>
+  <smotion mode='rpqa'>
+    <rpqa>
+      <pinning_interval> 2500 </pinning_interval>
+      <start_step> 2500 </start_step>
+      <max_relax_steps> 1000 </max_relax_steps>
+      <inherent_data> True </inherent_data>
+      <!-- cg_rp relaxes each bead independently, with its own convergence
+           test and step length. That matters here: at high lambdaqkin the
+           replicas are spread over tens of eV and converge at very different
+           rates, and the other optimizers share one global convergence test
+           across all beads. -->
+      <optimizer mode='cg_rp'>
+        <!-- loose on purpose: the relaxation only has to identify which
+             replica sits deepest, not resolve each minimum precisely -->
+        <tolerances>
+          <energy units='electronvolt'> 1e-3 </energy>
+          <force units='ev/ang'> 0.01 </force>
+          <position units='angstrom'> 0.05 </position>
+        </tolerances>
+      </optimizer>
+    </rpqa>
+  </smotion>
+</simulation>
