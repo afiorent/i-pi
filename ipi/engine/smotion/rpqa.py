@@ -40,6 +40,9 @@ def _find_dynamics(motion):
 class RPQA(Smotion):
     """Ring-polymer quantum annealing.
 
+    A. Fiorentino and N. Marzari, "Quantum annealing for materials",
+    arXiv:2606.03405 (2026)
+
     Runs the RPQA loop that used to be a shell script driving i-PI four times
     per iteration: relax every bead, pick the one in the deepest minimum, move
     that one replica to its minimum while the rest of the ring polymer stays

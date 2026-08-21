@@ -209,10 +209,15 @@ class InputQKinRamp(InputDictionary):
         ),
     }
 
-    default_help = """QKinRamp Motion class. It just updates the ensemble
-                    lambda in steps, between the indicated values, and
-                    then holds to the highest value. It should typically be combined
-                    with a dynamics class and thermostats, using a MultiMotion. Multimotion not yet implemented"""
+    default_help = (
+        """QKinRamp Motion class. It just updates the ensemble lambdaqkin in steps,
+                    between the indicated values, and then holds to the final value.
+                    Scaling the quantum kinetic energy by lambdaqkin is equivalent to
+                    scaling hbar^2, so this ramps the strength of the nuclear quantum
+                    effects. It should typically be combined with a dynamics class and
+                    a thermostat, using a MultiMotion. """
+        + "Described in A. Fiorentino and N. Marzari, 'Quantum annealing for materials', arXiv:2606.03405 (2026)."
+    )
     default_label = "QKinRAMP"
 
     def store(self, ramp):

@@ -116,9 +116,23 @@ class PressureRamp(Motion):
 
 
 class QKinRamp(Motion):
-    """Lambdaqkin ramp.
+    """Ramps lambdaqkin, the prefactor of the quantum kinetic energy.
+
+    Scaling the quantum kinetic energy by lambdaqkin is equivalent to scaling
+    hbar^2, so this ramps the strength of the nuclear quantum effects. Used to
+    anneal a ring polymer from a delocalized state down to the physical value
+    (or towards zero, for a classical minimum).
+
+    A. Fiorentino and N. Marzari, "Quantum annealing for materials",
+    arXiv:2606.03405 (2026)
 
     Attributes:
+       lambda_start: Value of lambdaqkin at the first step.
+       lambda_end: Value it is ramped to, and held at afterwards.
+       total_steps: Step at which lambda_end is reached.
+       current_step: Steps taken so far; restart state.
+       logscale: Interpolate lambdaqkin geometrically rather than linearly.
+       sqrtscale: Interpolate sqrt(lambdaqkin) linearly, i.e. hbar itself.
     """
 
     def __init__(

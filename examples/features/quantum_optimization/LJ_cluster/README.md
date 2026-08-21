@@ -3,6 +3,11 @@
 Finds the global minimum of a 25-atom Lennard-Jones cluster in a single i-PI
 run, driven by the `rpqa` super-motion.
 
+The method is described in
+
+> A. Fiorentino and N. Marzari, *Quantum annealing for materials*,
+> [arXiv:2606.03405](https://arxiv.org/abs/2606.03405) (2026)
+
 ```
 ./run.sh
 ```

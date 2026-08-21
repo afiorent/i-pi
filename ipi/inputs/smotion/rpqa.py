@@ -102,7 +102,11 @@ class InputRPQA(InputDictionary):
         ),
     }
 
-    default_help = "Ring-polymer quantum annealing"
+    default_help = (
+        "Ring-polymer quantum annealing: periodically relaxes every bead, pins the "
+        "replica sitting in the deepest minimum, and lets the annealing dynamics "
+        "carry on around it. Described in A. Fiorentino and N. Marzari, 'Quantum annealing for materials', arXiv:2606.03405 (2026)."
+    )
     default_label = "RPQA"
 
     def store(self, rpqa):

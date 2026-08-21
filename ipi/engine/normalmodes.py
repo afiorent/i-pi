@@ -501,7 +501,7 @@ class NormalModes:
         between replicas.
         """
         # print('!lambda qkin from normal mode', self.ensemble.lambdaqkin)
-        # depend on ensemble.lambdaqkin (renamed from lambdakin)
+        # depends on ensemble.lambdaqkin as well as the temperature ramp
         return (
             self.ensemble.temp
             * self.nbeads
