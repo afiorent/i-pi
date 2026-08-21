@@ -47,7 +47,15 @@ class InputGeop(InputDictionary):
                 "dtype": str,
                 "default": "lbfgs",
                 "help": "The geometry optimization algorithm to be used",
-                "options": ["sd", "cg", "bfgs", "bfgstrm", "lbfgs", "damped_bfgs"],
+                "options": [
+                    "sd",
+                    "cg",
+                    "cg_rp",
+                    "bfgs",
+                    "bfgstrm",
+                    "lbfgs",
+                    "damped_bfgs",
+                ],
             },
         )
     }
@@ -226,6 +234,10 @@ class InputGeop(InputDictionary):
         elif geop.mode == "sd":
             self.ls_options.store(geop.ls_options)
         elif geop.mode == "cg":
+            self.old_direction.store(geop.d)
+            self.ls_options.store(geop.ls_options)
+            self.old_force.store(geop.old_f)
+        elif geop.mode == "cg_rp":
             self.old_direction.store(geop.d)
             self.ls_options.store(geop.ls_options)
             self.old_force.store(geop.old_f)

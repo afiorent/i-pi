@@ -41,7 +41,7 @@ from ipi.engine.motion import (
     InstantonMotion,
     TemperatureRamp,
     PressureRamp,
-    LambdaRamp,
+    QKinRamp,
     AtomSwap,
     Planetary,
     AlKMC,
@@ -64,7 +64,7 @@ from .scphonons import InputSCPhonons
 from .alchemy import InputAlchemy
 from .atomswap import InputAtomSwap
 from .planetary import InputPlanetary
-from .ramp import InputTemperatureRamp, InputPressureRamp, InputLambdaRamp
+from .ramp import InputTemperatureRamp, InputPressureRamp, InputQKinRamp
 from .al6xxx_kmc import InputAlKMC
 from .driven_dynamics import InputDrivenDynamics
 from ipi.utils.units import *
@@ -106,7 +106,7 @@ class InputMotionBase(Input):
                     "constrained_dynamics",
                     "t_ramp",
                     "p_ramp",
-                    "lambda_ramp",
+                    "qkin_ramp",
                     "alchemy",
                     "atomswap",
                     "planetary",
@@ -150,7 +150,10 @@ class InputMotionBase(Input):
             {
                 "dtype": int,
                 "default": np.zeros(0, int),
-                "help": " Indices i*nbeads+jatoms indicating the j-th atom on the i-th bead should be held fixed.",
+                "help": "Indices of the beads (replicas of the ring polymer) that should be held fixed, "
+                "with all of their atoms. Can be combined with fixatoms/fixatoms_dof, in which case the "
+                "frozen degrees of freedom are the union of the two. Only supported for "
+                "mode='dynamics', and only with <normal_modes propagator='bab'>.",
             },
         ),
         "optimizer": (
@@ -230,9 +233,9 @@ class InputMotionBase(Input):
             InputPressureRamp,
             {"default": {}, "help": "Option for pressure ramp"},
         ),
-        "lambda_ramp": (
-            InputLambdaRamp,
-            {"default": {}, "help": "Option for lambda ramp"},
+        "qkin_ramp": (
+            InputQKinRamp,
+            {"default": {}, "help": "Option for qkin ramp"},
         ),
         "instanton": (
             InputInst,
@@ -323,9 +326,10 @@ class InputMotionBase(Input):
         elif type(sc) is PressureRamp:
             self.mode.store("p_ramp")
             self.p_ramp.store(sc)
-        elif type(sc) is LambdaRamp:
-            self.mode.store("lambda_ramp")
-            self.lambda_ramp.store(sc)
+            tsc = 1
+        elif type(sc) is QKinRamp:
+            self.mode.store("qkin_ramp")
+            self.qkin_ramp.store(sc)
             tsc = 1
         elif type(sc) is AlKMC:
             self.mode.store("al-kmc")
@@ -339,6 +343,10 @@ class InputMotionBase(Input):
         elif tsc > 0:
             self.fixcom.store(sc.fixcom)
             self.fixatoms_dof.store(sc.fixatoms_dof)
+            # only the motion classes that support frozen beads carry fixbeads,
+            # but it must be stored so that the constraint survives a restart
+            if hasattr(sc, "fixbeads"):
+                self.fixbeads.store(sc.fixbeads)
 
     def fetch(self):
         """Creates a motion calculator object.
@@ -376,12 +384,19 @@ class InputMotionBase(Input):
                 fixatoms_dof = fixatoms[:, np.newaxis] * 3 + np.array([0, 1, 2])
         fixatoms_dof = np.sort(fixatoms_dof.flatten())
 
-        # Convert fixbeads to fixbeads_dof similar to fixatoms
-        if len(fixbeads) > 0:
-            fixbeads_dof = fixbeads[:, np.newaxis] * 3 + np.array([0, 1, 2])
-            fixbeads_dof = np.sort(fixbeads_dof.flatten())
-        else:
-            fixbeads_dof = np.zeros(0, int)
+        # fixbeads holds bead indices; the expansion to the (nbeads, 3*natoms)
+        # mask of frozen degrees of freedom happens in the engine, where the
+        # number of atoms is known (ipi.engine.normalmodes.active_beads_mask).
+        fixbeads = np.sort(np.asarray(fixbeads, int).flatten())
+        if len(fixbeads) > 0 and self.mode.fetch() != "dynamics":
+            softexit.trigger(
+                status="bad",
+                message=(
+                    "fixbeads is only supported for motion mode='dynamics', but it was "
+                    "given for mode='%s', where it would be silently ignored."
+                    % self.mode.fetch()
+                ),
+            )
 
         if self.mode.fetch() == "replay":
             sc = Replay(
@@ -419,7 +434,7 @@ class InputMotionBase(Input):
             sc = Dynamics(
                 fixcom=fixcom,
                 fixatoms_dof=fixatoms_dof,
-                fixbeads_dof=fixbeads_dof,
+                fixbeads=fixbeads,
                 **self.dynamics.fetch()
             )
         elif self.mode.fetch() == "constrained_dynamics":
@@ -460,8 +475,8 @@ class InputMotionBase(Input):
             sc = TemperatureRamp(**self.t_ramp.fetch())
         elif self.mode.fetch() == "p_ramp":
             sc = PressureRamp(**self.p_ramp.fetch())
-        elif self.mode.fetch() == "lambda_ramp":
-            sc = LambdaRamp(**self.lambda_ramp.fetch())
+        elif self.mode.fetch() == "qkin_ramp":
+            sc = QKinRamp(**self.qkin_ramp.fetch())
         elif self.mode.fetch() == "al-kmc":
             sc = AlKMC(
                 fixcom=fixcom, fixatoms_dof=fixatoms_dof, **self.al6xxx_kmc.fetch()

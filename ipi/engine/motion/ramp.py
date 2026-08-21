@@ -10,7 +10,7 @@ Algorithms implemented by Robert Meissner and Riccardo Petraglia, 2016
 
 from ipi.engine.motion import Motion
 
-__all__ = ["TemperatureRamp", "PressureRamp", "LambdaRamp"]
+__all__ = ["TemperatureRamp", "PressureRamp", "QKinRamp"]
 
 
 class TemperatureRamp(Motion):
@@ -115,11 +115,10 @@ class PressureRamp(Motion):
                 )
 
 
-class LambdaRamp(Motion):
-    """Lambdakin ramp (quench/heat).
+class QKinRamp(Motion):
+    """Lambdaqkin ramp.
 
-        Attributes:
-    ##TODO controlla sostituzioni con temp to lambda
+    Attributes:
     """
 
     def __init__(
@@ -133,12 +132,12 @@ class LambdaRamp(Motion):
         logscale=True,
         sqrtscale=False,
     ):
-        """Initialises a Lambdakin ramp motion
+        """Initialises a Lambdaqkin ramp motion
 
         Args:
         """
 
-        super(LambdaRamp, self).__init__()
+        super(QKinRamp, self).__init__()
         self.lambda_start = lambda_start
         self.lambda_end = lambda_end
         self.total_steps = total_steps
@@ -147,7 +146,7 @@ class LambdaRamp(Motion):
         self.sqrtscale = sqrtscale
 
     def bind(self, ens, beads, nm, cell, bforce, prng, omaker):
-        super(LambdaRamp, self).bind(ens, beads, nm, cell, bforce, prng, omaker)
+        super(QKinRamp, self).bind(ens, beads, nm, cell, bforce, prng, omaker)
 
     def step(self, step=None):
         """Updates ensemble temperature. Yes, that's it everything else should follow through"""
@@ -155,21 +154,21 @@ class LambdaRamp(Motion):
         self.current_step += 1
         # just sets the temperature
         if self.current_step >= self.total_steps:
-            self.ensemble.lambdakin = self.lambda_end
+            self.ensemble.lambdaqkin = self.lambda_end
         else:
             if self.logscale:
-                self.ensemble.lambdakin = self.lambda_start * (
+                self.ensemble.lambdaqkin = self.lambda_start * (
                     self.lambda_end / self.lambda_start
                 ) ** (self.current_step * 1.0 / self.total_steps)
             elif self.sqrtscale:
-                self.ensemble.lambdakin = (
+                self.ensemble.lambdaqkin = (
                     self.lambda_start**0.5
                     + self.current_step
                     * (self.lambda_end**0.5 - self.lambda_start**0.5)
                     / self.total_steps
                 ) ** 2
             else:
-                self.ensemble.lambdakin = (
+                self.ensemble.lambdaqkin = (
                     self.lambda_start
                     + self.current_step
                     * (self.lambda_end - self.lambda_start)

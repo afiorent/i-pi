@@ -15,6 +15,7 @@ from ipi.utils.units import Constants, unit_to_internal
 from ipi.utils.mathtools import logsumlog, h2abc_deg
 from ipi.utils.io.inputs import io_xml
 from ipi.engine.motion.driven_dynamics import DrivenDynamics
+from ipi.engine.normalmodes import active_beads_mask
 from ipi.utils.softexit import softexit
 
 __all__ = ["Properties", "Trajectories", "getkey", "getall", "help_latex", "help_rst"]
@@ -328,10 +329,10 @@ class Properties:
                 "func": (lambda: self.ensemble.temp),
             },
             ##New addition
-            "lambdakin": {
+            "lambdaqkin": {
                 "dimension": "undefined",
-                "help": "The  lambdakin for the current ensemble",
-                "func": (lambda: self.ensemble.lambdakin),
+                "help": "The lambdaqkin for the current ensemble",
+                "func": (lambda: self.ensemble.lambdaqkin),
             },
             "ensemble_pressure": {
                 "dimension": "pressure",
@@ -1162,7 +1163,26 @@ class Properties:
                     # non-centroid mode, no need to add KE for fixcom and constrained centroid
                     eff_number_fixed_dof = 0
 
-            if len(self.motion.fixatoms_dof) > 0:
+            # whole frozen beads (<fixbeads>) are not diagonal in the atom index,
+            # so they need the (nbeads, 3*natoms) mask rather than a per-atom
+            # flag vector. The mask also carries fixatoms_dof, so it supersedes
+            # the branch below whenever it exists.
+            beads_mask = active_beads_mask(
+                self.beads.nbeads,
+                self.beads.natoms,
+                self.motion.fixatoms_dof,
+                getattr(self.motion, "fixbeads", ()),
+            )
+
+            if beads_mask is not None:
+                dof_ids = np.concatenate(
+                    (atom_ids * 3, atom_ids * 3 + 1, atom_ids * 3 + 2)
+                )
+                # summing the mask already totals over the beads, so unlike the
+                # fixatoms-only branch this must not be scaled by eff_nbeads
+                eff_number_fixed_dof += np.sum(~beads_mask[:, dof_ids])
+
+            elif len(self.motion.fixatoms_dof) > 0:
                 # Note that fixatom should NOT be compatitable with fixcom!
                 flags = np.zeros(self.beads.natoms * 3)
                 flags[self.motion.fixatoms_dof] += 1  # mark all fixed atom dof as 1
@@ -3081,8 +3101,8 @@ class Trajectories:
                 "func": self.get_rg,
             },
             "extras": {
-                "help": """The additional data returned by the client code. If the attribute "extra_type" is specified, and if the 
-                    data is JSON formatted, it prints only the specified field. Otherwise (or if extra_type="raw") the full string 
+                "help": """The additional data returned by the client code. If the attribute "extra_type" is specified, and if the
+                    data is JSON formatted, it prints only the specified field. Otherwise (or if extra_type="raw") the full string
                     is printed verbatim. Will print out one file per bead, unless the bead attribute is set by the user.""",
                 "func": (lambda: self.system.forces.extras),
             },
@@ -3091,7 +3111,7 @@ class Trajectories:
                 "help": """The contribution to the system forces from one of the force components.
                        Takes one mandatory argument index (zero-based) that indicates which component of the
                        potential must be returned. The optional argument 'bead' will print the potential associated
-                       with the specified bead (interpolated to the full ring polymer), otherwise the centoid force is computed. 
+                       with the specified bead (interpolated to the full ring polymer), otherwise the centoid force is computed.
                        If the potential is weighed, the weight will be applied. """,
                 "func": lambda index, bead="-1": (
                     self.system.forces.forces_component(int(index)).sum(axis=0)
@@ -3105,7 +3125,7 @@ class Trajectories:
                 "help": """The contribution to the system forces from one of the force components.
                        Takes one mandatory argument index (zero-based) that indicates which component of the
                        potential must be returned. The optional argument 'bead' will print the potential associated
-                       with the specified bead (with the level of discretization of the component), otherwise the 
+                       with the specified bead (with the level of discretization of the component), otherwise the
                        centoid force is computed. The weight of the potential is not applied. """,
                 "func": lambda index, bead="-1": (
                     self.system.forces.forces_component(
@@ -3118,11 +3138,11 @@ class Trajectories:
                 ),
             },
             "extras_component_raw": {
-                "help": """The additional data returned by the client code, printed verbatim or expanded 
-                           as a dictionary. See "extras". 
-                           Fetches the extras from a specific force component, indicated in parentheses 
-                           and a specific bead [extras_component_raw(idx; bead=0)]. 
-                           Never applies weighting or contraction, and does not automatically sum 
+                "help": """The additional data returned by the client code, printed verbatim or expanded
+                           as a dictionary. See "extras".
+                           Fetches the extras from a specific force component, indicated in parentheses
+                           and a specific bead [extras_component_raw(idx; bead=0)].
+                           Never applies weighting or contraction, and does not automatically sum
                            over beads as we don't know if the extras are numeric""",
                 "func": (lambda idx: (self.system.forces.extras_component(int(idx)))),
             },

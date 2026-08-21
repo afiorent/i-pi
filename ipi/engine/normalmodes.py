@@ -20,7 +20,45 @@ from ipi.utils import nmtransform
 from ipi.utils.messages import verbosity, warning, info
 from ipi.utils.exchange import *
 
-__all__ = ["NormalModes"]
+__all__ = ["NormalModes", "active_beads_mask"]
+
+
+def active_beads_mask(nbeads, natoms, fixatoms_dof, fixbeads):
+    """Builds the boolean mask of the freely-moving degrees of freedom.
+
+    Whole beads (replicas) listed in `fixbeads` are frozen, and so are the
+    degrees of freedom listed in `fixatoms_dof`, on every bead: the frozen set
+    is the union of the two.
+
+    Args:
+       nbeads: The number of beads.
+       natoms: The number of atoms.
+       fixatoms_dof: Indices (into 3*natoms) of the degrees of freedom held
+          fixed on every bead.
+       fixbeads: Indices of the beads held fixed.
+
+    Returns:
+       A (nbeads, 3*natoms) boolean array that is True for the degrees of
+       freedom that are free to move, or None when no whole bead is frozen -
+       so that callers keep their fixatoms-only paths untouched.
+    """
+
+    if len(fixbeads) == 0:
+        return None
+
+    fixbeads = np.asarray(fixbeads, int)
+    if np.any(fixbeads < 0) or np.any(fixbeads >= nbeads):
+        raise ValueError(
+            "fixbeads indices out of range: got %s for a %d-bead ring polymer. "
+            "Note that <fixbeads> takes bead indices, not flattened "
+            "ibead*natoms+iatom degrees of freedom." % (str(fixbeads), nbeads)
+        )
+
+    mask = np.ones((nbeads, 3 * natoms), bool)
+    mask[fixbeads, :] = False  # whole frozen beads
+    if len(fixatoms_dof) > 0:
+        mask[:, np.asarray(fixatoms_dof, int)] = False  # union with fixed atoms
+    return mask
 
 
 class NormalModes:
@@ -175,31 +213,24 @@ class NormalModes:
         self.ensemble = ensemble
         dpipe(motion._dt, self._dt)
 
-        # Generate activebeads_mask based on fixbeads_dof (same logic as in dynamics)
-        if len(motion.fixbeads_dof) > 0:
-            # Create flattened indices for all beads and atoms
-            total_dof = self.nbeads * 3 * self.natoms
-            if np.any(motion.fixbeads_dof >= total_dof):
-                raise ValueError(
-                    "Constrained bead indexes are out of bounds wrt. number of beads and atoms."
-                )
-
-            # Create mask assuming fixbeads_dof is flattened, then reshape
-            full_indices_flat = np.arange(total_dof)
-            activebeads_mask_flat = ~np.isin(full_indices_flat, motion.fixbeads_dof)
-            self.activebeads_mask = activebeads_mask_flat.reshape(
-                self.nbeads, 3 * self.natoms
+        # Mask of the freely-moving degrees of freedom, None if no bead is frozen.
+        # Only motion classes that support frozen beads define fixbeads.
+        self.activebeads_mask = active_beads_mask(
+            self.nbeads,
+            self.natoms,
+            getattr(motion, "fixatoms_dof", ()),
+            getattr(motion, "fixbeads", ()),
+        )
+        if self.activebeads_mask is not None:
+            info(
+                " @normalmodes: freezing beads %s (%d of %d degrees of freedom left free)"
+                % (
+                    str(np.asarray(motion.fixbeads, int)),
+                    np.sum(self.activebeads_mask),
+                    self.activebeads_mask.size,
+                ),
+                verbosity.medium,
             )
-
-            # Debug print
-            print(
-                f"DEBUG: Generated activebeads_mask from fixbeads_dof: {motion.fixbeads_dof}"
-            )
-            print(f"DEBUG: activebeads_mask shape: {self.activebeads_mask.shape}")
-            print(f"DEBUG: Number of active DOFs: {np.sum(self.activebeads_mask)}")
-        else:
-            self.activebeads_mask = None
-            print("DEBUG: No fixed beads constraints - activebeads_mask set to None")
 
         # sets up what's necessary to perform nm transformation.
         if self.nbeads == 1:  # classical trajectory! don't waste time doing anything!
@@ -284,8 +315,8 @@ class NormalModes:
             func=self.get_omegan,
             dependencies=[
                 self.ensemble._temp,
-                self.ensemble._lambdakin,
-            ],  # now omegan it depends on both TemperatureRamp and LambdaRamp
+                self.ensemble._lambdaqkin,
+            ],  # now omegan depends on both TemperatureRamp and Qkinramp
         )
         self._omegan2 = depend_value(
             name="omegan2", func=self.get_omegan2, dependencies=[self._omegan]
@@ -469,13 +500,14 @@ class NormalModes:
         """Returns the effective vibrational frequency for the interaction
         between replicas.
         """
-        # print('!lambda kin from normal mode',self.ensemble.lambdakin)
+        # print('!lambda qkin from normal mode', self.ensemble.lambdaqkin)
+        # depend on ensemble.lambdaqkin (renamed from lambdakin)
         return (
             self.ensemble.temp
             * self.nbeads
             * units.Constants.kb
             / units.Constants.hbar
-            / np.sqrt(self.ensemble.lambdakin)
+            / np.sqrt(self.ensemble.lambdaqkin)
         )
 
     def get_omegan2(self):
@@ -849,7 +881,14 @@ class NormalModes:
             # Free ring polymer dynamics are done with smaller time step detlat = dt/nmts
             dt = self.dt / self.nmts
             if self.activebeads_mask is not None:
-                # Apply dynamics only to active beads
+                # Apply dynamics only to active beads. Note that a frozen bead
+                # still exerts its spring force on its neighbours - fspring is
+                # computed from all the bead positions as usual, only the update
+                # of the frozen rows is skipped, which is exactly the constraint
+                # we want. Note also that the centroid revert above displaces
+                # *every* bead uniformly, frozen ones included; it is exactly
+                # cancelled by the preceding qcstep, so the frozen beads do stay
+                # put - but only as long as that pair stays together.
                 for j in range(0, self.nmts):
                     self.beads.p[self.activebeads_mask] += (
                         0.5 * dt * self.fspring[self.activebeads_mask]
@@ -904,10 +943,36 @@ class NormalModes:
                     "@Normalmodes : Bosonic forces not compatible right now with the exact or Cayley propagators."
                 )
 
-            # For exact/cayley propagators, raise error if constraints exist
+            # For exact/cayley propagators, raise error if constraints exist.
+            # Freezing a bead is not a diagonal constraint in the ring normal
+            # mode basis, so these propagators cannot express it; use
+            # <normal_modes propagator='bab'>, which integrates the springs in
+            # Cartesian coordinates and can simply skip the frozen rows.
+            #
+            # There is an exact route, should this ever be worth implementing.
+            # Cutting the ring at the frozen bead j leaves an open chain of
+            # nbeads-1 beads with *both ends clamped* at q_j. In terms of
+            # u_k = q_k - q_j (k != j) the spring potential is the fixed-fixed
+            # tridiagonal chain
+            #     V = (m wn^2 / 2) [ u_+^2 + sum_k (u_{k+1} - u_k)^2 + u_-^2 ]
+            # whose eigenvalues are 4 sin^2(k pi / 2P), i.e. frequencies
+            #     w_k = 2 wn sin(k pi / 2P),   k = 1 ... P-1
+            # which is exactly nmtransform.o_nm_eva(P)[1:], the open-path
+            # spectrum minus its zero mode. Only the transform differs: it is a
+            # DST-I of length P-1, built like nmtransform.mk_o_nm_matrix and
+            # applied the same matrix-multiply way the open paths already are.
+            # The catches are that the clamped chain has no zero mode, so
+            # qcstep would have to be skipped entirely (the centroid stops being
+            # a propagatable degree of freedom); the transform acts on u, so q_j
+            # enters as an offset restored after the back-transform; it requires
+            # the same bead to be frozen for every atom; and kin, kstress,
+            # dynm3 and any normal-mode thermostat are all defined against the
+            # ring modes and would need the clamped variant too.
             if self.activebeads_mask is not None and not np.all(self.activebeads_mask):
                 raise NotImplementedError(
-                    "Active beads constraints only supported with BAB propagator"
+                    "Frozen beads (<fixbeads>) are only supported with the "
+                    "Cartesian free-ring-polymer propagator, "
+                    "<normal_modes propagator='bab'>."
                 )
 
             """

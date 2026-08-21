@@ -1,0 +1,96 @@
+<!--
+  Ring-polymer quantum annealing (RPQA) of a 25-atom Lennard-Jones cluster,
+  as a single i-PI run driven by the 'rpqa' super-motion.
+
+  The ring polymer is annealed while lambdaqkin (an effective hbar^2) is ramped
+  down. Every <pinning_interval> steps the smotion relaxes all the beads, pins
+  the replica sitting in the deepest minimum, and hands control back to the
+  dynamics, which carries on around the frozen replica.
+
+  This example deliberately uses far too short a delocalization: only 200
+  steps, where ../LJ_cluster uses 5000. The first pinning event therefore lands
+  on a poor minimum, -10.1023 eV, and the point of the example is that the run
+  recovers anyway: a different replica quenches into the global-minimum basin
+  during the next interval and takes over the pin at event 2.
+
+  Do not copy these settings for production. They are chosen to make the
+  recovery visible, not to converge reliably - see README.md.
+
+  Run it with:  ./run.sh
+-->
+<simulation mode="static" verbosity="medium">
+  <output prefix='escape'>
+    <properties stride='500' filename='out'>  [ step, time{picosecond}, conserved{kelvin}, temperature{kelvin}, kinetic_cv{kelvin}, potential{electronvolt}, lambdaqkin ] </properties>
+    <properties stride='500' filename='beadpot'>  [ step, bead_potentials{electronvolt} ] </properties>
+    <trajectory filename='pos' stride='5000'> positions </trajectory>
+    <trajectory filename='roc' stride='5000'> x_centroid </trajectory>
+    <checkpoint stride='5000'/>
+  </output>
+  <prng>
+    <seed>4</seed>
+  </prng>
+  <!-- a deliberately short delocalization (200 steps) + 8 intervals of 5000 -->
+  <total_steps>40200</total_steps>
+  <ffsocket mode='unix' name='lj_driver' pbc='False'>
+    <address>rpqa_escape</address>
+    <latency>0.0001</latency>
+  </ffsocket>
+  <system>
+    <initialize nbeads='16'>
+      <file mode='ase'> init_4.xyz </file>
+      <velocities mode='thermal' units='kelvin'> 50 </velocities>
+      <!-- very large cell to avoid interaction through PBC -->
+      <cell mode='abc'> [300.0, 300.0, 300.0] </cell>
+    </initialize>
+    <forces>
+      <force forcefield='lj_driver'> </force>
+    </forces>
+    <ensemble>
+      <temperature units="kelvin"> 50.0 </temperature>
+      <lambdaqkin> 19.0 </lambdaqkin>
+    </ensemble>
+    <!-- freezing a bead requires the Cartesian free-ring-polymer propagator -->
+    <normal_modes propagator='bab'/>
+    <motion mode='multi'>
+      <motion mode='dynamics'>
+        <fixcom>False</fixcom>
+        <!-- no <fixbeads> here: the smotion chooses and sets it -->
+        <dynamics mode='nvt'>
+          <thermostat mode='langevin'>
+            <tau units='femtosecond'> 20 </tau>
+          </thermostat>
+          <timestep units='femtosecond'> 1.0 </timestep>
+        </dynamics>
+      </motion>
+      <motion mode='qkin_ramp'>
+        <qkin_ramp>
+          <lambda_start> 19.0 </lambda_start>
+          <lambda_end> 0.01 </lambda_end>
+          <!-- NB: this is the step at which the anneal must be *finished*, i.e.
+               the last pinning event, not the length of the run. The final
+               interval then runs fully quenched. -->
+          <total_steps> 35200 </total_steps>
+          <logscale> False </logscale>
+          <sqrtscale> True </sqrtscale>
+        </qkin_ramp>
+      </motion>
+    </motion>
+  </system>
+  <smotion mode='rpqa'>
+    <rpqa>
+      <pinning_interval> 5000 </pinning_interval>
+      <start_step> 200 </start_step>
+      <max_relax_steps> 5000 </max_relax_steps>
+      <!-- save the quenched (inherent) structure and energy of every bead at
+           every pinning event -->
+      <inherent_data> True </inherent_data>
+      <optimizer mode='lbfgs'>
+        <tolerances>
+          <energy> 1e-5 </energy>
+          <force> 1e-3 </force>
+          <position> 5e-3 </position>
+        </tolerances>
+      </optimizer>
+    </rpqa>
+  </smotion>
+</simulation>

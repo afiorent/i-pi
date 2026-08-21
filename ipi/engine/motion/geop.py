@@ -16,7 +16,14 @@ import time
 
 from ipi.engine.motion import Motion
 from ipi.utils.depend import dstrip
-from ipi.utils.mintools import min_brent, BFGS, BFGSTRM, L_BFGS, Damped_BFGS
+from ipi.utils.mintools import (
+    min_brent,
+    min_approx_batch,
+    BFGS,
+    BFGSTRM,
+    L_BFGS,
+    Damped_BFGS,
+)
 from ipi.utils.messages import verbosity, info
 
 __all__ = ["GeopMotion"]
@@ -102,6 +109,8 @@ class GeopMotion(Motion):
         elif self.mode == "bfgstrm":
             self.tr = tr_trm
             self.hessian = hessian_trm
+            # kept so that reset() can restore the initial trust radius
+            self.initial_values = {"tr_trm": tr_trm}
             self.optimizer = BFGSTRMOptimizer()
         elif self.mode == "lbfgs":
             self.corrections = corrections_lbfgs
@@ -113,18 +122,23 @@ class GeopMotion(Motion):
             self.optimizer = SDOptimizer()
         elif self.mode == "cg":
             self.optimizer = CGOptimizer()
+        elif self.mode == "cg_rp":
+            self.optimizer = CGRPOptimizer()
         elif self.mode == "damped_bfgs":
             self.invhessian = invhessian_bfgs
             self.optimizer = Damped_BFGSOptimizer()
         else:
             self.optimizer = DummyOptimizer()
 
-    def reset(self):  # necessary for Al6xxx-kmc
+    def reset(self):  # necessary for Al6xxx-kmc and for the RPQA smotion
         # zeroes out all memory of previous steps
         self.old_x *= 0.0
         self.old_f *= 0.0
         self.old_u *= 0.0
         self.d *= 0.0
+
+        # and the optimizer's own state, including the `converged` latch
+        self.optimizer.reset()
 
         if self.mode == "bfgs":
             self.invhessian[:] = np.eye(
@@ -136,8 +150,10 @@ class GeopMotion(Motion):
             self.tr = self.initial_values["tr_trm"]
         # lbfgs
         elif self.mode == "lbfgs":
-            self.corrections *= 0.0
-            self.scale *= 0.0
+            # only the history, not corrections/scale: those are options (how
+            # many corrections to keep, which scaling to use), not accumulated
+            # state. Zeroing them also turned these ints into floats, which
+            # then failed to re-parse from a checkpoint.
             self.qlist *= 0.0
             self.glist *= 0.0
 
@@ -264,6 +280,21 @@ class GradientMapper(object):
         return e, g
 
 
+class GradientMapperRP(GradientMapper):
+    """Same as GradientMapper, but returns the potential energy of each bead
+    separately instead of the sum over all beads. Used by optimizers that
+    treat each bead as an independent structure (e.g. CGRPOptimizer)."""
+
+    def __call__(self, x):
+        """computes per-bead energy and gradient for optimization step"""
+
+        self.fcount += 1
+        self.dbeads.q[:, self.fixatoms_mask] = x
+        e = dstrip(self.dforces.pots).copy()  # Energy, one entry per bead
+        g = -self.dforces.f[:, self.fixatoms_mask]  # Gradient
+        return e, g
+
+
 class DummyOptimizer:
     """Dummy class for all optimization classes"""
 
@@ -279,6 +310,17 @@ class DummyOptimizer:
     def step(self, step=None):
         """Dummy simulation time step which does nothing."""
         pass
+
+    def reset(self):
+        """Forgets that a previous minimization ever converged.
+
+        `converged` is a latch: exitstep() only ever sets it True. Anything that
+        runs the same optimizer for several independent minimizations (the KMC
+        driver, the RPQA smotion) has to clear it, or every relaxation after the
+        first is a no-op. Subclasses with per-bead or line-search state of their
+        own extend this.
+        """
+        self.converged = False
 
     def bind(self, geop):
         """
@@ -978,3 +1020,191 @@ class CGOptimizer(DummyOptimizer):
         # Exit simulation step
         d_x_max = np.amax(np.absolute(d_x))
         self.exitstep(self.forces.pot, u0, d_x_max)
+
+
+class CGRPOptimizer(DummyOptimizer):
+    """Conjugate gradient, Polak-Ribiere, treating each bead as an
+    independent structure (no ring-polymer spring coupling). Unlike
+    CGOptimizer, which flattens all beads into one vector and so uses a
+    single global direction and step length, each bead here gets its own CG
+    direction and its own line-search step, while all beads' force
+    evaluations stay batched into a single call per line-search iteration.
+
+    The per-bead trial step is *adaptive*: it is carried across steps and
+    doubled whenever Armijo accepts on the first try, otherwise it inherits
+    whatever the backtracking accepted. Without this the search direction is
+    a unit vector and the trial step is a fixed constant, so a step that is
+    always accepted never grows and the optimizer crawls at
+    ls_options["step"] bohr per iteration.
+
+    Beads that meet the tolerances are frozen (given a zero direction) and
+    latched as converged. This is not a micro-optimisation, it is what makes
+    the batched line search viable. Every fdf() call re-evaluates the whole
+    batch, because taint in the depend graph is not bead-resolved, so one
+    optimizer step costs max(trials) * nbeads force evaluations rather than
+    sum(trials). A converged bead has a vanishing gradient, so the Armijo
+    condition can never be satisfied against numerical noise and it
+    backtracks all the way down to alamin -- around 11 trials -- on every
+    step, setting max(trials) for the whole batch. Measured on the RPQA
+    relax stages, freezing takes the mean trials per bead from 4.27 to 1.38
+    and the total cost from 89312 to 18144 force evaluations (a 4.9x
+    difference), for a ~0.0005 eV difference in the intermediate minima and
+    none in the final ones.
+
+    This is an experimental mode (mode="cg_rp"), kept separate from "cg" so
+    the two can be compared directly; it does not support checkpoint restart
+    of the per-bead previous potential, trial step or converged mask (all
+    recomputed fresh on (re)start).
+    """
+
+    # trial-step growth per accepted-on-first-try iteration, and the floor
+    # it is never allowed to collapse below (so a bead that has to backtrack
+    # hard can still recover within a few steps)
+    ls_growth = 2.0
+    ls_floor = 1.0e-8
+
+    def bind(self, geop):
+        # call bind function from DummyOptimizer
+        super(CGRPOptimizer, self).bind(geop)
+        self.gm = GradientMapperRP()
+        self.gm.bind(self)
+        self.ls_options = geop.ls_options
+        self.big_step = geop.big_step
+        self.reset()
+
+    def reset(self):
+        """Clears the per-bead state on top of the `converged` latch.
+
+        old_u_beads is the sentinel for "first iteration" (this optimizer keys
+        on it rather than on step == 0), alam is the adapted per-bead trial
+        step, and active is the converged-bead mask -- all three are latched
+        across a minimization and would otherwise make a second one a no-op.
+        """
+        super(CGRPOptimizer, self).reset()
+        self.old_u_beads = None
+        # per-bead trial step, seeded from ls_options and adapted from there
+        self.alam = np.full(self.beads.nbeads, self.ls_options["step"], dtype=float)
+        # beads still being optimized; frozen ones keep a zero direction
+        self.active = np.ones(self.beads.nbeads, dtype=bool)
+
+    def step(self, step=None):
+        """Does one simulation time step: one Polak-Ribiere CG iteration,
+        independently per bead."""
+
+        self.qtime = -time.time()
+        info("\nMD STEP %d" % step, verbosity.debug)
+
+        if self.old_u_beads is None:
+            gradf1 = dq1 = dstrip(self.forces.f)
+            self.old_u_beads = dstrip(self.forces.pots).copy()
+            info(" @GEOP: Determined SD direction", verbosity.debug)
+        else:
+            gradf0 = self.old_f
+            dq0 = self.d
+            gradf1 = dstrip(self.forces.f)
+            num = np.einsum("bi,bi->b", gradf1 - gradf0, gradf1)
+            den = np.einsum("bi,bi->b", gradf0, gradf0)
+            beta = np.maximum(
+                0.0, np.divide(num, den, out=np.zeros_like(num), where=den > 0)
+            )
+            dq1 = gradf1 + beta[:, None] * dq0
+            # Polak-Ribiere with beta>=0 usually gives a descent direction,
+            # but not always; fall back to steepest descent for any bead
+            # whose CG direction points uphill, which no step length fixes.
+            uphill = np.einsum("bi,bi->b", dq1, gradf1) <= 0.0
+            if np.any(uphill):
+                dq1[uphill] = gradf1[uphill]
+                info(
+                    " @GEOP: reset %d bead(s) to SD direction" % np.sum(uphill),
+                    verbosity.debug,
+                )
+            info(" @GEOP: Determined CG direction", verbosity.debug)
+
+        # Store force and direction for next CG step
+        self.d[:] = dq1
+        self.old_f[:] = gradf1
+
+        # Per-bead unit direction, so that the trial step in alam is directly
+        # a displacement in bohr and can be compared against big_step.
+        norms = np.linalg.norm(dq1, axis=1, keepdims=True)
+        dq1_unit = np.divide(dq1, norms, out=np.zeros_like(dq1), where=norms > 1e-30)
+
+        if len(self.fixatoms_dof) > 0:
+            for dqb in dq1_unit:
+                dqb[self.fixatoms_dof] = 0.0
+
+        # Freeze converged beads: a zero direction is accepted by the line
+        # search on its first trial, so they cost no extra batch iterations.
+        dq1_unit[~self.active] = 0.0
+
+        x0 = dstrip(self.beads.q)[:, self.gm.fixatoms_mask]
+        d0 = dq1_unit[:, self.gm.fixatoms_mask]
+        f0 = self.old_u_beads
+        df0 = -dstrip(self.forces.f)[:, self.gm.fixatoms_mask]
+
+        # One CG iteration per bead, each with its own adapted trial step
+        x_new, f_new, g_new, alam_used, ntrial = min_approx_batch(
+            self.gm,
+            x0,
+            (f0, df0),
+            d0,
+            self.big_step,
+            self.ls_options["tolerance"] * self.tolerances["energy"],
+            self.ls_options["iter"],
+            init_alam=self.alam,
+        )
+        info("   Number of force calls: %d" % (self.gm.fcount))
+        # Every fdf() call re-evaluates the whole batch (taint in the depend
+        # graph is not bead-resolved), so a step costs max(ntrial) * nbeads
+        # force evaluations even though the beads only needed mean(ntrial)
+        # each. The gap between these two is wasted work.
+        info(
+            "   line search trials per bead: mean %.2f, max %d"
+            % (ntrial.mean(), ntrial.max()),
+            verbosity.medium,
+        )
+        self.gm.fcount = 0
+
+        # Adapt the per-bead trial step for the next iteration: reward a step
+        # that was accepted immediately (it may have been too timid), and
+        # otherwise carry over whatever the backtracking settled on. Beads
+        # that made no progress at all (alam_used == 0) shrink instead.
+        accepted_first = (ntrial == 1) & (alam_used > 0.0)
+        next_alam = np.where(alam_used > 0.0, alam_used, 0.1 * self.alam)
+        next_alam[accepted_first] *= self.ls_growth
+        self.alam = np.clip(next_alam, self.ls_floor, self.big_step)
+
+        # Update positions and forces
+        self.beads.q = self.gm.dbeads.q
+        self.forces.transfer_forces(
+            self.gm.dforces
+        )  # This forces the update of the forces
+
+        # Per-bead convergence check, correctly normalized per bead unlike the
+        # shared exitstep() used by the other modes.
+        d_x = np.absolute(x_new - x0)
+        fmax = np.amax(np.absolute(g_new), axis=1)
+        de = np.absolute(f_new - f0) / self.beads.natoms
+        bead_converged = (
+            (de <= self.tolerances["energy"])
+            & (fmax <= self.tolerances["force"])
+            & (np.amax(d_x, axis=1) <= self.tolerances["position"])
+        )
+        self.old_u_beads[:] = f_new
+
+        for k in np.where(self.active & bead_converged)[0]:
+            info(" @GEOP: bead %d converged" % k, verbosity.debug)
+        self.active[self.active & bead_converged] = False
+        self.converged = not self.active.any()
+
+        self.qtime += time.time()
+        info(
+            "   %d/%d beads converged, max|f| %e, max step %e"
+            % (
+                np.sum(~self.active),
+                self.beads.nbeads,
+                np.amax(fmax),
+                np.amax(d_x),
+            ),
+            verbosity.medium,
+        )

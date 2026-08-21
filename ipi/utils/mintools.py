@@ -537,6 +537,168 @@ def min_approx(fdf, x0, fdf0, d0, big_step, tol, itmax):
     return (x, fx, dfx)
 
 
+# Batched approximate line search: runs `min_approx`'s Armijo backtracking
+# independently over a leading "replica" axis, sharing one evaluation of
+# `fdf` per inner iteration across all rows that are still searching.
+
+
+def min_approx_batch(fdf, x0, fdf0, d0, big_step, tol, itmax, init_alam=1.0):
+    """Batched version of min_approx: runs one independent 1-D approximate
+    line search per row of x0/d0, but evaluates fdf() once per inner
+    iteration for the whole batch (so callers can keep force evaluations
+    for several independent replicas batched together).
+
+    Arguments:
+        fdf: function and its gradient, fdf(x) -> (f, df) with x of shape
+            (m, ndof), f of shape (m,), df of shape (m, ndof)
+        x0: initial points, shape (m, ndof)
+        fdf0: (f0, df0), f0 shape (m,), df0 shape (m, ndof)
+        d0: initial directions, shape (m, ndof)
+        big_step: maximum displacement, applied per row
+        tol: tolerance for exiting the line search
+        itmax: maximum number of iterations for the line search
+        init_alam: initial trial step, either a scalar or one value per row.
+            1.0 reproduces the Newton step convention used by BFGS; callers
+            whose d0 is a unit vector should pass their own step guess, and
+            should feed `alam` from the previous call back in so that the
+            trial step adapts (see CGRPOptimizer).
+
+    Returns:
+        (x, fx, dfx, alam, ntrial) where `alam` is the step actually accepted
+        for each row (0.0 if the row made no progress and was reverted to x0)
+        and `ntrial` counts the fdf evaluations each row consumed. Callers use
+        these two to adapt their next initial step.
+    """
+
+    info(" @MINIMIZE: Started batched approx. line search", verbosity.debug)
+    m = x0.shape[0]
+    f0, df0 = fdf0
+    alf = 1.0e-4
+
+    d0 = d0.copy()
+    stepsum = np.linalg.norm(d0, axis=1)
+    toobig = stepsum > big_step
+    if np.any(toobig):
+        info(" @MINIMIZE: Scaled step size for line search", verbosity.debug)
+        d0[toobig] *= (big_step / stepsum[toobig])[:, None]
+        stepsum[toobig] = big_step
+
+    slope = np.einsum("ij,ij->i", df0, d0)
+
+    test = np.amax(np.divide(np.absolute(d0), np.maximum(np.absolute(x0), 1.0)), axis=1)
+    alamin = np.divide(tol, test, out=np.full(m, np.inf), where=test > 0)
+
+    # per-row initial trial step, capped so that the trial displacement
+    # alam * |d0| never exceeds big_step
+    alam = np.broadcast_to(np.asarray(init_alam, dtype=float), (m,)).astype(float)
+    alam = np.minimum(
+        alam, np.divide(big_step, stepsum, out=np.full(m, np.inf), where=stepsum > 0)
+    )
+
+    alam2 = np.zeros(m)
+    f2 = np.zeros(m)
+    first_backtrack = np.ones(m, dtype=bool)
+
+    x = x0.copy()
+    fx = f0.copy()
+    dfx = df0.copy()
+    pending = np.ones(m, dtype=bool)
+    alam_used = np.zeros(m)
+    ntrial = np.zeros(m, dtype=int)
+
+    i = 1
+    while i < itmax and np.any(pending):
+        x[pending] = x0[pending] + alam[pending, None] * d0[pending]
+        ntrial[pending] += 1
+        fxb, dfxb = fdf(x)
+        fx[pending] = fxb[pending]
+        dfx[pending] = dfxb[pending]
+
+        # Convergence on change in x: revert to the initial point. Unlike
+        # scalar min_approx, the energy and gradient are reverted too --
+        # returning the trial point's energy alongside the initial point's
+        # positions would corrupt a caller that tracks the energy change
+        # across iterations (which is how CGRPOptimizer tests convergence).
+        tiny_step = pending & (alam < alamin)
+        x[tiny_step] = x0[tiny_step]
+        fx[tiny_step] = f0[tiny_step]
+        dfx[tiny_step] = df0[tiny_step]
+
+        # Sufficient function decrease
+        decreased = pending & ~tiny_step & (fx <= f0 + alf * alam * slope)
+
+        alam_used[decreased] = alam[decreased]
+        alam_used[tiny_step] = 0.0
+
+        done_now = tiny_step | decreased
+        still = pending & ~done_now
+
+        if np.any(still):
+            tmplam = np.zeros(m)
+
+            first = still & first_backtrack
+            if np.any(first):
+                tmplam[first] = -slope[first] / (
+                    2.0 * (fx[first] - f0[first] - slope[first])
+                )
+
+            # Subsequent backtracks: quadratic (a==0) or cubic (a!=0) fit,
+            # exactly mirroring min_approx's scalar branch structure --
+            # note the "coefficient less than 0.5*lambda_1" clamp only
+            # applies in the a!=0 (cubic) branch, matching the original.
+            later = still & ~first_backtrack
+            if np.any(later):
+                a1, a2 = alam[later], alam2[later]
+                rhs1 = fx[later] - f0[later] - a1 * slope[later]
+                rhs2 = f2[later] - f0[later] - a2 * slope[later]
+                a = (rhs1 / (a1 * a1) - rhs2 / (a2 * a2)) / (a1 - a2)
+                b = (-a2 * rhs1 / (a1 * a1) + a1 * rhs2 / (a2 * a2)) / (a1 - a2)
+                a_is_zero = a == 0.0
+
+                tmp_quad = np.divide(
+                    -slope[later], 2.0 * b, out=np.zeros_like(b), where=b != 0
+                )
+
+                disc = b * b - 3.0 * a * slope[later]
+                sqrt_disc = np.sqrt(np.maximum(disc, 0.0))
+                tmp_disc_neg = 0.5 * a1
+                tmp_b_le0 = np.divide(
+                    -b + sqrt_disc, 3.0 * a, out=np.zeros_like(a), where=a != 0
+                )
+                tmp_else = np.divide(
+                    -slope[later],
+                    b + sqrt_disc,
+                    out=np.zeros_like(b),
+                    where=(b + sqrt_disc) != 0,
+                )
+                tmp_cubic = np.where(
+                    disc < 0.0, tmp_disc_neg, np.where(b <= 0.0, tmp_b_le0, tmp_else)
+                )
+                tmp_cubic = np.minimum(tmp_cubic, 0.5 * a1)
+
+                tmplam[later] = np.where(a_is_zero, tmp_quad, tmp_cubic)
+
+            alam2[still] = alam[still]
+            f2[still] = fx[still]
+            alam[still] = np.maximum(tmplam[still], 0.1 * alam[still])
+            first_backtrack[still] = False
+
+        pending[done_now] = False
+        i += 1
+
+    if np.any(pending):
+        info(
+            " @MINIMIZE: Error - maximum iterations for line search (%d) exceeded, \
+            exiting search" % itmax,
+            verbosity.low,
+        )
+        # rows that never satisfied Armijo keep their last trial point; report
+        # the step that produced it so the caller can shrink from there
+        alam_used[pending] = alam[pending]
+    info(" @MINIMIZE: Finished batched minimization", verbosity.debug)
+    return (x, fx, dfx, alam_used, ntrial)
+
+
 # BFGS algorithm with approximate line search
 
 

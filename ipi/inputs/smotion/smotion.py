@@ -22,11 +22,19 @@ Classes:
 """
 
 from copy import copy
-from ipi.engine.smotion import Smotion, ReplicaExchange, MetaDyn, MultiSmotion, DMD
+from ipi.engine.smotion import (
+    Smotion,
+    ReplicaExchange,
+    MetaDyn,
+    MultiSmotion,
+    DMD,
+    RPQA,
+)
 from ipi.utils.inputvalue import *
 from .remd import InputReplicaExchange
 from .metad import InputMetaDyn
 from .dmd import InputDMD
+from .rpqa import InputRPQA
 from ipi.utils.units import *
 
 __all__ = ["InputSmotion"]
@@ -50,7 +58,7 @@ class InputSmotionBase(Input):
             {
                 "dtype": str,
                 "help": "Kind of smotion which should be performed.",
-                "options": ["dummy", "remd", "metad", "dmd"],
+                "options": ["dummy", "remd", "metad", "dmd", "rpqa"],
             },
         )
     }
@@ -61,6 +69,10 @@ class InputSmotionBase(Input):
         ),
         "metad": (InputMetaDyn, {"default": {}, "help": "Option for REMD simulation"}),
         "dmd": (InputDMD, {"default": {}, "help": "Option for driven MD simulation"}),
+        "rpqa": (
+            InputRPQA,
+            {"default": {}, "help": "Option for ring-polymer quantum annealing"},
+        ),
     }
 
     dynamic = {}
@@ -88,6 +100,9 @@ class InputSmotionBase(Input):
         elif type(sc) is DMD:
             self.mode.store("dmd")
             self.dmd.store(sc)
+        elif type(sc) is RPQA:
+            self.mode.store("rpqa")
+            self.rpqa.store(sc)
         else:
             raise ValueError("Cannot store Smotion calculator of type " + str(type(sc)))
 
@@ -107,6 +122,8 @@ class InputSmotionBase(Input):
             sc = MetaDyn(**self.metad.fetch())
         elif self.mode.fetch() == "dmd":
             sc = DMD(**self.dmd.fetch())
+        elif self.mode.fetch() == "rpqa":
+            sc = RPQA(**self.rpqa.fetch())
         else:
             sc = Smotion()
             # raise ValueError("'" + self.mode.fetch() + "' is not a supported motion calculation mode.")
