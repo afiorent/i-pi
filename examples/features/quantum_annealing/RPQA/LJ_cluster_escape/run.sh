@@ -4,7 +4,7 @@
 # A deliberately under-delocalized RPQA run; see README.md.
 # The first pinning event lands on a poor minimum and the run recovers from it.
 
-source ../../../../env.sh
+source ../../../../../env.sh
 
 nworker=2
 IPI_ADDRESS=rpqa_escape

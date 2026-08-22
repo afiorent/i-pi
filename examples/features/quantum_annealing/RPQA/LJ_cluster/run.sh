@@ -5,7 +5,7 @@
 # there is a single continuous trajectory and a single RESTART covering the
 # whole run.
 
-source ../../../../env.sh
+source ../../../../../env.sh
 
 nworker=2
 IPI_ADDRESS=rpqa_lj

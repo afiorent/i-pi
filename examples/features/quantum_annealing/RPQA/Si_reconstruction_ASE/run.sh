@@ -6,7 +6,7 @@
 # python on your PATH, point PYTHON at one that has them, e.g.
 #   PYTHON=~/miniforge3/envs/nep_env/bin/python ./run.sh
 
-source ../../../../env.sh
+source ../../../../../env.sh
 
 # Clients evaluate beads concurrently, but the gain saturates: measured on this
 # example, 1/2/4/8/16 clients give 1.00/1.17/1.90/2.51/2.59x. A NEP evaluation
