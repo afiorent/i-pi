@@ -21,3 +21,6 @@ features/metadynamics/pimd_metadynamics_zundel
 features/metadynamics/remd_metadynamics_zundel
 features/metadynamics/wte_metadynamics_zundel
 features/metadynamics/opes_metadynamics_zundel
+
+# Not a runnable example
+features/quantum_annealing/RPQA/Si_reconstruction_ASE/reference                   # recorded run; its structures/ path only resolves from the parent folder
