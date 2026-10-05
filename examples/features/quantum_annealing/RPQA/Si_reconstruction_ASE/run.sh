@@ -10,7 +10,7 @@ source ../../../../../env.sh
 
 # Clients evaluate beads concurrently, but the gain saturates: measured on this
 # example, 1/2/4/8/16 clients give 1.00/1.17/1.90/2.51/2.59x. A NEP evaluation
-# on 16 atoms is only a few ms, so i-PI's own per-step cost is the floor and
+# on 32 atoms is only a few ms, so i-PI's own per-step cost is the floor and
 # more than 8 workers buys nothing. A larger cell or a costlier potential
 # would scale further.
 nworker=${NWORKER:-8}

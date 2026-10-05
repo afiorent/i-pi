@@ -13,6 +13,11 @@ be checked without re-running it. Seed 31415, 8 clients, 18.6 min wall.
 | `inherent_pinned_bead30.xyz` | inherent structures of the finally-pinned replica, one frame per event |
 | `found_fd3m.xyz` | the crystal it ends on, in Angstrom with the cell, ready for ASE |
 
+`input.xml` is that configuration verbatim but for one path: the starting
+structures moved from `structures/nbeads_32/` to `structures/N32/nbeads_32/`
+after this run, to match the 16-atom set, and the path here was updated so the
+file still runs. Nothing else changed.
+
 ## What the run does
 
 Nine pinning events. The first four sit at +0.23 eV/atom, then at

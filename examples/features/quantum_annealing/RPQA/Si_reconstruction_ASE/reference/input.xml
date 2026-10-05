@@ -36,7 +36,7 @@
   <system>
     <!-- one frame per bead; the cell comes from the file's Lattice -->
     <initialize nbeads='32'>
-      <file mode='ase'> structures/nbeads_32/optimal_beads_0.xyz </file>
+      <file mode='ase'> structures/N32/nbeads_32/optimal_beads_0.xyz </file>
       <velocities mode='thermal' units='kelvin'> 50 </velocities>
     </initialize>
     <forces>

@@ -97,7 +97,7 @@ demonstration, lengthen the schedule.
 
 ## The starting structures
 
-`structures/nbeads_32/optimal_beads_*.xyz` hold four independent ring-polymer
+`structures/N32/nbeads_32/optimal_beads_*.xyz` hold four independent ring-polymer
 configurations, 32 frames each, one per bead. `input.xml` uses
 `optimal_beads_0.xyz`; change that one line to try the others.
 
