@@ -19,6 +19,7 @@ except Exception:
 
 import argparse
 import json
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -290,11 +291,27 @@ class BatchedMACE(MACECalculator):
             )[:-1]
         ]
 
+    @contextmanager
+    def model_dtype(self):
+        """
+        Make the model dtype the torch default while building and evaluating batches.
+        MACE >= 0.3.17 no longer sets it process-wide, so the batch would be float32.
+        """
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(next(self.models[0].parameters()).dtype)
+        try:
+            yield
+        finally:
+            torch.set_default_dtype(previous)
+
     def compute_batched(self, atoms: List[Atoms]) -> List[Parent]:
         """
         Evaluate the model(s) on a list of structures.
         """
+        with self.model_dtype():
+            return self._compute_batched(atoms)
 
+    def _compute_batched(self, atoms: List[Atoms]) -> List[Parent]:
         data_loader, options = self.preprocess(atoms)
         training = options["training"]
         compute_bec = options["compute_bec"]
@@ -367,6 +384,7 @@ class BatchedMACE(MACECalculator):
             if data.get(keyword) is not None:
                 raise ValueError(f"'{keyword}' in 'data' should be None.")
 
+        # MACE >= 0.3.17 appends mag_forces to the returned tuple
         forces, _, stress, hessian, edge_forces = get_outputs(
             energy=data["energy"],
             positions=batch["positions"],
@@ -374,7 +392,7 @@ class BatchedMACE(MACECalculator):
             displacement=data["displacement"],
             **self.instructions["forward_kwargs"],
             training=training,
-        )
+        )[:5]
 
         to_assign = {
             "forces": forces,
